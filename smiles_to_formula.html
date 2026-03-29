@@ -1,0 +1,2855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMILES → Formula</title>
+
+<script>(function(){var t=localStorage.getItem('smiles-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:light)').matches)document.documentElement.setAttribute('data-theme','light');})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root, [data-theme="dark"] {
+    --bg: #0c0f13;
+    --surface: #151a21;
+    --surface-2: #1c222b;
+    --border: #2a3140;
+    --border-focus: #4a7cff;
+    --text: #e4e8ef;
+    --text-dim: #7a8599;
+    --accent: #4a7cff;
+    --accent-glow: rgba(74, 124, 255, 0.15);
+    --green: #34d399;
+    --green-dim: rgba(52, 211, 153, 0.12);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.10);
+    --orange: #fb923c;
+    --svg-bond: #e4e8ef;
+    --ambient-glow: rgba(74,124,255,0.06);
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+
+  [data-theme="light"] {
+    --bg: #f3f5f9;
+    --surface: #ffffff;
+    --surface-2: #eaecf2;
+    --border: #d0d5df;
+    --border-focus: #3b6de8;
+    --text: #1a1f2e;
+    --text-dim: #5f6878;
+    --accent: #3b6de8;
+    --accent-glow: rgba(59, 109, 232, 0.12);
+    --green: #16a364;
+    --green-dim: rgba(22, 163, 100, 0.10);
+    --red: #dc2626;
+    --red-dim: rgba(220, 38, 38, 0.08);
+    --orange: #ea7c1a;
+    --svg-bond: #1a1f2e;
+    --ambient-glow: rgba(59,109,232,0.04);
+  }
+
+  /* ── Loading screen ── */
+  #loading-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    z-index: 9999;
+    transition: opacity 0.4s ease;
+  }
+  #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+  #loading-screen .ls-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  #loading-screen .ls-title {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  #loading-screen .ls-title .arrow { color: var(--accent); }
+  #loading-screen .ls-sub {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    overflow-x: hidden;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  /* ── Ambient background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -40%; left: -20%;
+    width: 80vw; height: 80vw;
+    background: radial-gradient(circle, var(--ambient-glow) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    width: 100%;
+  }
+
+  /* ── Header ── */
+  .header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .header h1 {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.4rem;
+  }
+
+  .header h1 .arrow { color: var(--accent); }
+
+  .header p {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+  }
+
+  .loading-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.4rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+
+  .loading-banner.ready {
+    border-color: var(--green);
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .loading-banner.error {
+    border-color: var(--red);
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* ── Input area ── */
+  .input-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .input-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-row input:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .input-row input::placeholder { color: var(--text-dim); opacity: 0.6; }
+
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0.7rem 1.4rem;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { opacity: 0.88; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Example chips ── */
+  .examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.9rem;
+  }
+
+  .examples span {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    padding-top: 0.15rem;
+    margin-right: 0.2rem;
+  }
+
+  .chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .chip:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  /* ── Results ── */
+  .results {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    pointer-events: none;
+  }
+
+  .results.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .formula-display {
+    text-align: center;
+    padding: 1.2rem 0 1rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.2rem;
+  }
+
+  .formula-display .formula {
+    font-family: var(--font-mono);
+    font-size: 2.4rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+
+  .formula-display .name-label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-top: 0.3rem;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+  }
+
+  .meta-item {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+  }
+
+  .meta-item .label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+  }
+
+  .meta-item .value {
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  /* ── Structure rendering ── */
+  .structure-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+
+  .structure-card .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.8rem;
+  }
+
+  #structure-svg {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+  }
+
+  #structure-svg svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Atom breakdown bar ── */
+  .atom-bar-section {
+    margin-top: 1rem;
+  }
+
+  .atom-bar-section .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+  }
+
+  .atom-bar-track {
+    display: flex;
+    height: 28px;
+    border-radius: 6px;
+    overflow: hidden;
+    gap: 2px;
+  }
+
+  .atom-bar-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #fff;
+    min-width: 32px;
+    transition: flex 0.4s ease;
+  }
+
+  .atom-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+  }
+
+  .atom-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+
+  .legend-swatch {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+  }
+
+  /* ── 3D Viewer ── */
+  .viewer-3d-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+  }
+
+  .viewer-3d-card .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.8rem;
+  }
+
+  #viewer-3d-container {
+    width: 100%;
+    height: 350px;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .viewer-3d-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.8rem;
+    align-items: center;
+  }
+
+  .viewer-3d-controls .control-label {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    padding-top: 0.15rem;
+    margin-right: 0.2rem;
+  }
+
+  .style-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.3rem 0.65rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .style-btn:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .style-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .viewer-3d-info {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+    font-style: italic;
+  }
+
+  .viewer-3d-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 0.6rem;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+  }
+
+  .viewer-3d-loading .spinner {
+    width: 22px; height: 22px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .viewer-3d-source {
+    font-size: 0.66rem;
+    color: var(--text-dim);
+    opacity: 0.7;
+    font-style: italic;
+    margin-top: 0.2rem;
+  }
+
+  .viewer-3d-spin-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .spin-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .spin-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
+
+  #spin-speed {
+    flex: 1;
+    max-width: 140px;
+    height: 4px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  #spin-speed:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .spin-speed-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    min-width: 2.5em;
+  }
+
+  /* ── Copy button ── */
+  .copy-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    transition: all 0.15s;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .copy-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .copy-btn.copied {
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .copy-btn svg { pointer-events: none; flex-shrink: 0; }
+
+  .formula-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .value-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .value-row .value { flex: 1; }
+
+  /* ── Mass percentage table ── */
+  .mass-pct-section {
+    margin-top: 0.8rem;
+  }
+
+  .mass-pct-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+  }
+
+  .mass-pct-table th {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    font-weight: 500;
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mass-pct-table th:not(:first-child) { text-align: right; }
+
+  .mass-pct-table td {
+    padding: 0.35rem 0.5rem;
+    color: var(--text);
+  }
+
+  .mass-pct-table td:not(:first-child) { text-align: right; }
+
+  .mass-pct-table tr:not(:last-child) td {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mass-pct-bar {
+    display: inline-block;
+    height: 6px;
+    border-radius: 3px;
+    margin-right: 0.4rem;
+    vertical-align: middle;
+  }
+
+  /* ── Error ── */
+  .error-msg {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    border-radius: 10px;
+    padding: 0.9rem 1.2rem;
+    color: var(--red);
+    font-size: 0.88rem;
+    font-family: var(--font-mono);
+  }
+
+  /* ── History ── */
+  .history-section { margin-top: 2rem; }
+
+  .history-section .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.55rem 0.9rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    font-size: 0.82rem;
+  }
+
+  .history-item:hover { border-color: var(--accent); }
+  .history-item .smiles-col { font-family: var(--font-mono); color: var(--text); }
+  .history-item .formula-col { font-family: var(--font-mono); color: var(--accent); }
+
+  /* ── Theme toggle ── */
+  .theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 38px; height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    transition: border-color 0.2s, color 0.2s;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .theme-toggle .icon-sun,
+  .theme-toggle .icon-moon { pointer-events: none; }
+
+  [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+  [data-theme="light"] .theme-toggle .icon-moon { display: inline; }
+  :root .theme-toggle .icon-sun,
+  [data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
+  :root .theme-toggle .icon-moon,
+  [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  /* ── NMR Prediction ── */
+  .nmr-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+  }
+
+  .nmr-card .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.8rem;
+  }
+
+  .nmr-card .section-label sup {
+    font-size: 0.6em;
+    vertical-align: super;
+    line-height: 0;
+  }
+
+  .nmr-freq-badge {
+    display: inline-block;
+    font-size: 0.62rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+
+  .nmr-spectrum-container {
+    width: 100%;
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .nmr-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    flex-wrap: wrap;
+  }
+
+  .nmr-toolbar .nmr-tb-group {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .nmr-toolbar .nmr-tb-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 0.2rem;
+  }
+
+  .nmr-toolbar .nmr-tb-label {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 0.15rem;
+    user-select: none;
+  }
+
+  .nmr-tb-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    padding: 0;
+    line-height: 1;
+    user-select: none;
+  }
+
+  .nmr-tb-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .nmr-tb-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .nmr-tb-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .nmr-range-input {
+    width: 42px;
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    text-align: center;
+    padding: 0 0.15rem;
+    outline: none;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+  }
+
+  .nmr-range-input::-webkit-inner-spin-button,
+  .nmr-range-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .nmr-range-input:focus {
+    border-color: var(--accent);
+  }
+
+  .nmr-canvas-wrap {
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+    background: var(--surface);
+    position: relative;
+    cursor: grab;
+  }
+
+  .nmr-canvas-wrap.dragging { cursor: grabbing; }
+
+  .nmr-canvas-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 260px;
+  }
+
+  .nmr-peak-table { margin-bottom: 0.6rem; }
+
+  .nmr-peak-table td:first-child,
+  .nmr-peak-table th:first-child { text-align: right; }
+
+  .nmr-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+    gap: 0.6rem;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+  }
+
+  .nmr-loading .spinner {
+    width: 22px; height: 22px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .nmr-disclaimer {
+    font-size: 0.66rem;
+    color: var(--text-dim);
+    font-style: italic;
+    opacity: 0.7;
+    margin-top: 0.4rem;
+  }
+
+  @media (max-width: 520px) {
+    .meta-grid { grid-template-columns: 1fr; }
+    .formula-display .formula { font-size: 1.8rem; }
+    .input-row { flex-direction: column; }
+    #viewer-3d-container { height: 280px; }
+    .nmr-canvas-wrap canvas { height: 200px; }
+    .nmr-toolbar { gap: 0.25rem; padding: 0.25rem 0.35rem; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="ls-spinner"></div>
+  <div class="ls-title">SMILES <span class="arrow">→</span> Formula</div>
+  <div class="ls-sub">Loading RDKit…</div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
+      <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <h1>SMILES <span class="arrow">→</span> Formula</h1>
+    <p>Molecular formula conversion powered by RDKit.js</p>
+    <a href="molecule_drawing.html" style="display:inline-block;margin-top:0.4rem;color:var(--accent);font-size:0.82rem;text-decoration:none;font-family:var(--font-mono);transition:opacity 0.15s;" onmouseover="this.style.opacity='0.75'" onmouseout="this.style.opacity='1'">Draw a molecule &rarr;</a>
+  </div>
+
+  <div class="loading-banner" id="status-banner">
+    <div class="spinner" id="status-spinner"></div>
+    <span id="status-text">Loading RDKit WebAssembly module…</span>
+  </div>
+
+  <div class="input-group">
+    <div class="input-row">
+      <input type="text" id="smiles-input" placeholder="Enter a SMILES string…" disabled autocomplete="off" spellcheck="false">
+      <button class="btn" id="convert-btn" disabled>Convert</button>
+    </div>
+    <div class="examples" id="examples-bar"><span>Try:</span></div>
+  </div>
+
+  <div class="results" id="results">
+    <div id="result-content"></div>
+  </div>
+
+  <div class="history-section" id="history-section" style="display:none;">
+    <div class="section-label">History</div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+</div>
+
+<!-- RDKit.js (MinimalLib WASM build) -->
+<script src="https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.js"></script>
+<!-- 3Dmol.js for interactive 3D molecular viewing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.5.3/3Dmol.js"></script>
+
+<!-- OpenChemLib for 3D conformer generation (replaces PubChem REST API) -->
+<script type="module">
+  import OCL from 'https://cdn.jsdelivr.net/npm/openchemlib@8.18.1/core.js/+esm';
+  window.OCL = OCL;
+  window.dispatchEvent(new Event('ocl-ready'));
+</script>
+
+<script>
+  // ── Globals ──
+  let RDKit = null;
+  let viewer3d = null;
+  let viewer3dStyle = 'stick';
+  let viewer3dHideH = false;
+  let viewer3dConversionId = 0; // tracks which conversion the async 3D fetch belongs to
+  let nmrConversionId = 0;     // tracks which conversion the async NMR prediction belongs to
+  const conversionHistory = JSON.parse(localStorage.getItem('smiles-history') || '[]');
+
+  // ── Molecule library (~100 common chemicals) ──
+  const MOLECULE_LIBRARY = [
+    // Everyday chemicals
+    { name: 'Water',           smiles: 'O' },
+    { name: 'Methanol',        smiles: 'CO' },
+    { name: 'Ethanol',         smiles: 'CCO' },
+    { name: 'Isopropanol',     smiles: 'CC(O)C' },
+    { name: 'Acetone',         smiles: 'CC(C)=O' },
+    { name: 'Acetic acid',     smiles: 'CC(=O)O' },
+    { name: 'Formic acid',     smiles: 'OC=O' },
+    { name: 'Formaldehyde',    smiles: 'C=O' },
+    { name: 'Acetaldehyde',    smiles: 'CC=O' },
+    { name: 'Glycerol',        smiles: 'OCC(O)CO' },
+    { name: 'Lactic acid',     smiles: 'CC(O)C(=O)O' },
+    { name: 'Oxalic acid',     smiles: 'OC(=O)C(=O)O' },
+    { name: 'Citric acid',     smiles: 'OC(=O)CC(O)(CC(=O)O)C(=O)O' },
+    { name: 'Urea',            smiles: 'NC(N)=O' },
+    { name: 'Butyric acid',    smiles: 'CCCC(=O)O' },
+    { name: 'Propanol',        smiles: 'CCCO' },
+    { name: 'Tartaric acid',   smiles: 'OC(=O)[C@H](O)[C@@H](O)C(=O)O' },
+    // Sugars
+    { name: 'Glucose',         smiles: 'OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O' },
+    { name: 'Fructose',        smiles: 'OC[C@@H]1O[C@](O)(CO)[C@H](O)[C@@H]1O' },
+    { name: 'Ribose',          smiles: 'OC[C@H]1OC(O)[C@H](O)[C@@H]1O' },
+    // Solvents
+    { name: 'Benzene',         smiles: 'c1ccccc1' },
+    { name: 'Toluene',         smiles: 'Cc1ccccc1' },
+    { name: 'Chloroform',      smiles: 'ClC(Cl)Cl' },
+    { name: 'Dichloromethane', smiles: 'ClCCl' },
+    { name: 'DMSO',            smiles: 'CS(C)=O' },
+    { name: 'DMF',             smiles: 'CN(C)C=O' },
+    { name: 'THF',             smiles: 'C1CCOC1' },
+    { name: 'Diethyl ether',   smiles: 'CCOCC' },
+    { name: 'Ethyl acetate',   smiles: 'CCOC(=O)C' },
+    { name: 'n-Hexane',        smiles: 'CCCCCC' },
+    { name: 'Cyclohexane',     smiles: 'C1CCCCC1' },
+    { name: 'Acetonitrile',    smiles: 'CC#N' },
+    { name: '1,4-Dioxane',     smiles: 'C1COCCO1' },
+    // Drugs & pharmaceuticals
+    { name: 'Aspirin',         smiles: 'CC(=O)Oc1ccccc1C(=O)O' },
+    { name: 'Paracetamol',     smiles: 'CC(=O)Nc1ccc(O)cc1' },
+    { name: 'Ibuprofen',       smiles: 'CC(C)Cc1ccc(cc1)C(C)C(=O)O' },
+    { name: 'Caffeine',        smiles: 'Cn1cnc2c1c(=O)n(C)c(=O)n2C' },
+    { name: 'Nicotine',        smiles: 'CN1CCCC1c1cccnc1' },
+    { name: 'Lidocaine',       smiles: 'CCN(CC)CC(=O)Nc1c(C)cccc1C' },
+    { name: 'Naproxen',        smiles: 'COc1ccc2cc([C@@H](C)C(=O)O)ccc2c1' },
+    { name: 'Metformin',       smiles: 'CN(C)C(=N)NC(=N)N' },
+    { name: 'Theobromine',     smiles: 'Cn1cnc2c1c(=O)[nH]c(=O)n2C' },
+    { name: 'Cocaine',         smiles: 'COC(=O)[C@@H]1[C@@H]2CC[C@H](C1OC(=O)c1ccccc1)N2C' },
+    { name: 'Saccharin',       smiles: 'O=C1NS(=O)(=O)c2ccccc21' },
+    { name: 'Aspartame',       smiles: 'COC(=O)[C@@H](Cc1ccccc1)NC(=O)[C@@H](N)CC(=O)O' },
+    { name: 'Penicillin G',    smiles: '[C@@H]1([C@@H]2CC(=C(N2C1=O)C(=O)O)C)(C)C' },
+    // Neurotransmitters
+    { name: 'Dopamine',        smiles: 'NCCc1ccc(O)c(O)c1' },
+    { name: 'Serotonin',       smiles: 'NCCc1c[nH]c2ccc(O)cc12' },
+    { name: 'Adrenaline',      smiles: 'CNC[C@@H](O)c1ccc(O)c(O)c1' },
+    { name: 'Norepinephrine',  smiles: 'NC[C@@H](O)c1ccc(O)c(O)c1' },
+    { name: 'Melatonin',       smiles: 'COc1ccc2[nH]cc(CCNC(C)=O)c2c1' },
+    { name: 'Histamine',       smiles: 'NCCc1c[nH]cn1' },
+    { name: 'GABA',            smiles: 'NCCCC(=O)O' },
+    { name: 'Acetylcholine',   smiles: 'CC(=O)OCC[N+](C)(C)C' },
+    // Amino acids
+    { name: 'Glycine',         smiles: 'NCC(=O)O' },
+    { name: 'Alanine',         smiles: 'C[C@@H](N)C(=O)O' },
+    { name: 'Phenylalanine',   smiles: 'N[C@@H](Cc1ccccc1)C(=O)O' },
+    { name: 'Tryptophan',      smiles: 'N[C@@H](Cc1c[nH]c2ccccc12)C(=O)O' },
+    { name: 'Tyrosine',        smiles: 'N[C@@H](Cc1ccc(O)cc1)C(=O)O' },
+    { name: 'Cysteine',        smiles: 'N[C@@H](CS)C(=O)O' },
+    { name: 'Leucine',         smiles: 'CC(C)C[C@@H](N)C(=O)O' },
+    { name: 'Proline',         smiles: 'OC(=O)[C@@H]1CCCN1' },
+    { name: 'Lysine',          smiles: 'NCCCC[C@@H](N)C(=O)O' },
+    { name: 'Arginine',        smiles: 'N=C(N)NCCC[C@@H](N)C(=O)O' },
+    // Nucleobases
+    { name: 'Adenine',         smiles: 'Nc1ncnc2[nH]cnc12' },
+    { name: 'Guanine',         smiles: 'Nc1nc2[nH]cnc2c(=O)[nH]1' },
+    { name: 'Cytosine',        smiles: 'Nc1ccnc(=O)[nH]1' },
+    { name: 'Thymine',         smiles: 'O=C1NC(=O)C(C)=CN1' },
+    { name: 'Uracil',          smiles: 'O=C1NC(=O)C=CN1' },
+    // Vitamins
+    { name: 'Ascorbic acid',   smiles: 'OC[C@H](O)[C@H]1OC(=O)C(O)=C1O' },
+    { name: 'Niacin',          smiles: 'OC(=O)c1cccnc1' },
+    { name: 'Folic acid',      smiles: 'Nc1nc2ncc(CNc3ccc(cc3)C(=O)N[C@@H](CCC(=O)O)C(=O)O)nc2c(=O)[nH]1' },
+    { name: 'Pyridoxine',      smiles: 'Cc1ncc(CO)c(CO)c1O' },
+    { name: 'Biotin',          smiles: 'O=C1N[C@@H]2CS[C@@H](CCCCC(=O)O)[C@H]2N1' },
+    // Natural products & flavors
+    { name: 'Vanillin',        smiles: 'COc1cc(C=O)ccc1O' },
+    { name: 'Capsaicin',       smiles: 'COc1cc(CNC(=O)CCCC/C=C/CC(C)C)ccc1O' },
+    { name: 'Cinnamaldehyde',  smiles: 'O=C/C=C/c1ccccc1' },
+    { name: 'Eugenol',         smiles: 'C=CCc1ccc(O)c(OC)c1' },
+    { name: 'Thymol',          smiles: 'CC(C)c1ccc(O)c(C)c1' },
+    { name: 'Menthol',         smiles: 'C[C@H]1CC[C@@H](C(C)C)[C@@H](O)C1' },
+    { name: 'Camphor',         smiles: 'CC1(C)[C@@H]2CC[C@@]1(C)C(=O)C2' },
+    { name: 'Linalool',        smiles: 'CC(C)=CCCC(C)(O)C=C' },
+    { name: 'Carvacrol',       smiles: 'CC(C)c1ccc(C)cc1O' },
+    { name: 'Limonene',        smiles: 'CC1=CC[C@@H](CC1)C(C)=C' },
+    // Steroids
+    { name: 'Cholesterol',     smiles: '[C@H]1(CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3(CC[C@@H](C4)O)C)C)[C@H](C)CCCC(C)C' },
+    { name: 'Testosterone',    smiles: 'C[C@]12CC[C@H]3[C@@H]([C@@H]1CC[C@@H]2O)CCC4=CC(=O)CC[C@]34C' },
+    { name: 'Cortisol',        smiles: 'C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2[C@@H](O)C[C@@]2(C)[C@H]1CC[C@]2(O)C(=O)CO' },
+    // Aromatics & heterocycles
+    { name: 'Naphthalene',     smiles: 'c1ccc2ccccc2c1' },
+    { name: 'Anthracene',      smiles: 'c1ccc2cc3ccccc3cc2c1' },
+    { name: 'Pyrene',          smiles: 'c1cc2ccc3cccc4ccc(c1)c2c34' },
+    { name: 'Phenol',          smiles: 'Oc1ccccc1' },
+    { name: 'Aniline',         smiles: 'Nc1ccccc1' },
+    { name: 'Pyrrole',         smiles: 'c1cc[nH]c1' },
+    { name: 'Imidazole',       smiles: 'c1cnc[nH]1' },
+    { name: 'Indole',          smiles: 'c1ccc2[nH]ccc2c1' },
+    { name: 'Furan',           smiles: 'c1ccoc1' },
+    { name: 'Thiophene',       smiles: 'c1ccsc1' },
+    { name: 'Quinoline',       smiles: 'c1ccnc2ccccc12' },
+    { name: 'Morpholine',      smiles: 'C1COCCN1' },
+    { name: 'Piperidine',      smiles: 'C1CCNCC1' },
+    { name: 'Purine',          smiles: 'c1ncc2[nH]cnc2n1' },
+    // Industrial / monomers
+    { name: 'Styrene',         smiles: 'C=Cc1ccccc1' },
+    { name: 'Acrylonitrile',   smiles: 'C=CC#N' },
+    { name: 'Acrylic acid',    smiles: 'C=CC(=O)O' },
+    { name: 'Caprolactam',     smiles: 'O=C1CCCCCN1' },
+    // Alkaloids
+    { name: 'Morphine',        smiles: 'CN1CC[C@]23c4c5ccc(O)c4O[C@H]2[C@@H](O)C=C[C@@H]3[C@@H]1C5' },
+    { name: 'Quinine',         smiles: 'OC(C1CCN2CCC=CC12)c1ccnc2ccc(OC)cc12' },
+  ];
+
+  // Element colors for the composition bar
+  const ELEM_COLORS = {
+    C:  '#6b7280', H:  '#94a3b8', O:  '#ef4444', N:  '#3b82f6',
+    S:  '#eab308', P:  '#f97316', F:  '#10b981', Cl: '#22c55e',
+    Br: '#a855f7', I:  '#8b5cf6', Fe: '#d97706', Si: '#64748b',
+    B:  '#ec4899', Se: '#f59e0b', Na: '#06b6d4', K:  '#8b5cf6',
+  };
+  const DEFAULT_COLOR = '#6366f1';
+
+  // Atomic number → element symbol (covers common organic/drug-like atoms)
+  const Z_TO_ELEM = {
+    1:'H',2:'He',3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',
+    11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar',
+    19:'K',20:'Ca',26:'Fe',29:'Cu',30:'Zn',33:'As',34:'Se',35:'Br',53:'I'
+  };
+
+  // Standard atomic weights (IUPAC 2021)
+  const ATOMIC_WEIGHT = {
+    H:1.008, He:4.003, Li:6.941, Be:9.012, B:10.81, C:12.011, N:14.007,
+    O:15.999, F:18.998, Ne:20.180, Na:22.990, Mg:24.305, Al:26.982,
+    Si:28.086, P:30.974, S:32.06, Cl:35.45, Ar:39.948, K:39.098,
+    Ca:40.078, Fe:55.845, Cu:63.546, Zn:65.38, As:74.922, Se:78.971,
+    Br:79.904, I:126.904
+  };
+
+  // ── NMR Shift Rules (SMARTS, most-specific first) ──
+  const NMR_SHIFT_RULES = [
+    // Carboxylic acid OH
+    { smarts: '[OX2H1][CX3]=[OX1]', shift: 11.0, label: 'COOH', labile: true, hOnMatch: 0 },
+    // Aldehyde H
+    { smarts: '[CX3H1](=O)[#6]', shift: 9.7, label: 'Aldehyde H', hOnMatch: 0 },
+    { smarts: '[CX3H1](=O)[H]', shift: 9.5, label: 'Aldehyde H', hOnMatch: 0 },
+    { smarts: '[CX3H1]=O', shift: 9.7, label: 'Aldehyde H', hOnMatch: 0 },
+    // Amide NH
+    { smarts: '[NX3H2][CX3](=[OX1])', shift: 7.5, label: 'Amide NH₂', labile: true, hOnMatch: 0 },
+    { smarts: '[NX3H1]([#6])[CX3](=[OX1])', shift: 7.8, label: 'Amide NH', labile: true, hOnMatch: 0 },
+    // Aromatic H (electron-poor: near N, near C=O)
+    { smarts: '[cH]1[cH][cH][nX2][cH][cH]1', shift: 8.2, label: 'Aromatic H (het)', hOnMatch: 0 },
+    { smarts: '[cH]', shift: 7.3, label: 'Aromatic H', hOnMatch: 0 },
+    // Phenol OH
+    { smarts: '[OX2H1]c', shift: 6.0, label: 'Phenol OH', labile: true, hOnMatch: 0 },
+    // Vinyl H
+    { smarts: '[CX3H2]=[CX3]', shift: 5.1, label: 'Vinyl H₂', hOnMatch: 0 },
+    { smarts: '[CX3H1]=[CX3]', shift: 5.3, label: 'Vinyl H', hOnMatch: 0 },
+    // -O-CH< (ester/ether methine)
+    { smarts: '[OX2][CX4H1]', shift: 3.8, label: 'CH-O', hOnMatch: 1 },
+    // -O-CH₂- (ester/ether methylene)
+    { smarts: '[OX2][CX4H2]', shift: 3.5, label: 'CH₂-O', hOnMatch: 1 },
+    // -O-CH₃ (methoxy)
+    { smarts: '[OX2][CX4H3]', shift: 3.4, label: 'CH₃-O', hOnMatch: 1 },
+    // α to C=O (ketone, ester, acid)
+    { smarts: '[CX4H1][CX3]=[OX1]', shift: 2.6, label: 'CH-C=O', hOnMatch: 0 },
+    { smarts: '[CX4H2][CX3]=[OX1]', shift: 2.4, label: 'CH₂-C=O', hOnMatch: 0 },
+    { smarts: '[CX4H3][CX3]=[OX1]', shift: 2.1, label: 'CH₃-C=O', hOnMatch: 0 },
+    // α to N (including aromatic N)
+    { smarts: '[nX3][CX4H1]', shift: 3.5, label: 'CH-N(ar)', hOnMatch: 1 },
+    { smarts: '[nX3][CX4H2]', shift: 3.3, label: 'CH₂-N(ar)', hOnMatch: 1 },
+    { smarts: '[nX3][CX4H3]', shift: 3.3, label: 'CH₃-N(ar)', hOnMatch: 1 },
+    { smarts: '[NX3][CX4H1]', shift: 2.7, label: 'CH-N', hOnMatch: 1 },
+    { smarts: '[NX3][CX4H2]', shift: 2.5, label: 'CH₂-N', hOnMatch: 1 },
+    { smarts: '[NX3][CX4H3]', shift: 2.3, label: 'CH₃-N', hOnMatch: 1 },
+    // α to F
+    { smarts: '[FX1][CX4H1]', shift: 4.5, label: 'CH-F', hOnMatch: 1 },
+    { smarts: '[FX1][CX4H2]', shift: 4.4, label: 'CH₂-F', hOnMatch: 1 },
+    { smarts: '[FX1][CX4H3]', shift: 4.3, label: 'CH₃-F', hOnMatch: 1 },
+    // α to Cl
+    { smarts: '[ClX1][CX4H1]', shift: 4.0, label: 'CH-Cl', hOnMatch: 1 },
+    { smarts: '[ClX1][CX4H2]', shift: 3.5, label: 'CH₂-Cl', hOnMatch: 1 },
+    { smarts: '[ClX1][CX4H3]', shift: 3.0, label: 'CH₃-Cl', hOnMatch: 1 },
+    // α to Br
+    { smarts: '[BrX1][CX4H1]', shift: 4.2, label: 'CH-Br', hOnMatch: 1 },
+    { smarts: '[BrX1][CX4H2]', shift: 3.3, label: 'CH₂-Br', hOnMatch: 1 },
+    { smarts: '[BrX1][CX4H3]', shift: 2.7, label: 'CH₃-Br', hOnMatch: 1 },
+    // α to I
+    { smarts: '[IX1][CX4H1]', shift: 4.2, label: 'CH-I', hOnMatch: 1 },
+    { smarts: '[IX1][CX4H2]', shift: 3.2, label: 'CH₂-I', hOnMatch: 1 },
+    { smarts: '[IX1][CX4H3]', shift: 2.2, label: 'CH₃-I', hOnMatch: 1 },
+    // Benzylic
+    { smarts: 'c[CX4H1]', shift: 2.9, label: 'Benzylic CH', hOnMatch: 1 },
+    { smarts: 'c[CX4H2]', shift: 3.5, label: 'Benzylic CH₂', hOnMatch: 1 },
+    { smarts: 'c[CX4H3]', shift: 2.3, label: 'Benzylic CH₃', hOnMatch: 1 },
+    // Allylic
+    { smarts: '[CX3]=[CX3][CX4H1]', shift: 1.9, label: 'Allylic CH', hOnMatch: 2 },
+    { smarts: '[CX3]=[CX3][CX4H2]', shift: 2.0, label: 'Allylic CH₂', hOnMatch: 2 },
+    { smarts: '[CX3]=[CX3][CX4H3]', shift: 1.7, label: 'Allylic CH₃', hOnMatch: 2 },
+    // Alcohol OH
+    { smarts: '[OX2H1][CX4]', shift: 2.5, label: 'OH', labile: true, hOnMatch: 0 },
+    // Aromatic amine
+    { smarts: '[NX3H2]c', shift: 4.0, label: 'ArNH₂', labile: true, hOnMatch: 0 },
+    { smarts: '[NX3H1]([#6])c', shift: 4.2, label: 'ArNH', labile: true, hOnMatch: 0 },
+    // Amine NH₂
+    { smarts: '[NX3H2]', shift: 1.5, label: 'NH₂', labile: true, hOnMatch: 0 },
+    // Amine NH
+    { smarts: '[NX3H1]([#6])[#6]', shift: 1.8, label: 'NH', labile: true, hOnMatch: 0 },
+    // Plain alkyl (fallbacks, least specific)
+    { smarts: '[CX4H1]', shift: 1.5, label: 'Alkyl CH', hOnMatch: 0 },
+    { smarts: '[CX4H2]', shift: 1.3, label: 'Alkyl CH₂', hOnMatch: 0 },
+    { smarts: '[CX4H3]', shift: 0.9, label: 'Alkyl CH₃', hOnMatch: 0 },
+  ];
+
+  const SPLITTING_NAMES = [
+    null, // 0 unused
+    { name: 'singlet', abbrev: 's' },
+    { name: 'doublet', abbrev: 'd' },
+    { name: 'triplet', abbrev: 't' },
+    { name: 'quartet', abbrev: 'q' },
+    { name: 'quintet', abbrev: 'quin' },
+    { name: 'sextet', abbrev: 'sex' },
+    { name: 'septet', abbrev: 'sep' },
+  ];
+
+  const PASCAL_TRIANGLE = [
+    [1],         // singlet
+    [1, 1],      // doublet
+    [1, 2, 1],   // triplet
+    [1, 3, 3, 1], // quartet
+    [1, 4, 6, 4, 1], // quintet
+    [1, 5, 10, 10, 5, 1], // sextet
+    [1, 6, 15, 20, 15, 6, 1], // septet
+  ];
+
+  const SPEC_FREQ = 400; // simulated spectrometer frequency in MHz
+
+  // ── Aromatic substituent influence (Hays-type corrections relative to benzene 7.27) ──
+  // Keyed by atomic number or functional group type at ring attachment point
+  // { ortho, meta, para } are additive shift corrections in ppm
+  const AROMATIC_SUB_CORRECTIONS = {
+    // halogen
+    'F':  { ortho: -0.30, meta: -0.02, para: -0.22 },
+    'Cl': { ortho: +0.02, meta: -0.06, para: -0.04 },
+    'Br': { ortho: +0.22, meta: -0.13, para: -0.03 },
+    'I':  { ortho: +0.40, meta: -0.26, para: -0.03 },
+    // nitrogen
+    'NH2':  { ortho: -0.75, meta: -0.24, para: -0.63 },
+    'NR':   { ortho: -0.60, meta: -0.18, para: -0.50 },
+    'NO2':  { ortho: +0.94, meta: +0.18, para: +0.38 },
+    'NHCO': { ortho: +0.12, meta: -0.07, para: -0.28 },
+    // oxygen
+    'OH':   { ortho: -0.50, meta: -0.14, para: -0.40 },
+    'OR':   { ortho: -0.43, meta: -0.09, para: -0.37 },
+    'OAc':  { ortho: -0.22, meta: +0.02, para: -0.05 },
+    // carbonyl
+    'COOH': { ortho: +0.80, meta: +0.14, para: +0.20 },
+    'COOR': { ortho: +0.74, meta: +0.07, para: +0.20 },
+    'COR':  { ortho: +0.64, meta: +0.09, para: +0.30 },
+    'CHO':  { ortho: +0.56, meta: +0.22, para: +0.29 },
+    'CONR': { ortho: +0.65, meta: +0.20, para: +0.22 },
+    // other
+    'CN':   { ortho: +0.27, meta: +0.11, para: +0.30 },
+    'vinyl':{ ortho: +0.06, meta: -0.03, para: -0.10 },
+    'alkyl':{ ortho: -0.17, meta: -0.09, para: -0.18 },
+    'aryl': { ortho: +0.09, meta: -0.02, para: +0.05 },
+  };
+
+  // ── Morgan algorithm for equivalence classes ──
+  function computeMorganClasses(atoms, bonds, defaults) {
+    const n = atoms.length;
+    if (n === 0) return new Map();
+    const defaultZ = defaults?.atom?.z ?? 6;
+    const defaultImpHs = defaults?.atom?.impHs ?? 0;
+    const defaultBo = defaults?.bond?.bo ?? 1;
+
+    // Build adjacency
+    const adj = Array.from({ length: n }, () => []);
+    for (const b of bonds) {
+      const [i, j] = b.atoms;
+      const bo = b.bo ?? defaultBo;
+      adj[i].push({ to: j, bo });
+      adj[j].push({ to: i, bo });
+    }
+
+    // Initial invariants: atomic number, degree, impHs, charge
+    const P = 1000000007; // large prime for modular hashing
+    let inv = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = atoms[i];
+      const z = a.z ?? defaultZ;
+      const impHs = a.impHs ?? defaultImpHs;
+      const deg = adj[i].length;
+      const chg = a.chg ?? 0;
+      inv[i] = z * 10000 + deg * 1000 + impHs * 100 + (chg + 50);
+    }
+
+    // Iterate until convergence
+    for (let iter = 0; iter < 20; iter++) {
+      const next = new Array(n);
+      for (let i = 0; i < n; i++) {
+        // Don't include bond order — Kekulé alternation breaks aromatic symmetry
+        const nbrs = adj[i].map(e => inv[e.to]).sort((a, b) => a - b);
+        let h = (inv[i] * 31) % P;
+        for (const v of nbrs) h = (h * 131 + v) % P;
+        next[i] = h;
+      }
+      // Check if number of distinct classes changed
+      const prevSet = new Set(inv);
+      const nextSet = new Set(next);
+      inv = next;
+      if (nextSet.size === prevSet.size) break;
+    }
+
+    // Map invariant values to class IDs
+    const valToClass = new Map();
+    let classId = 0;
+    const result = new Map();
+    for (let i = 0; i < n; i++) {
+      if (!valToClass.has(inv[i])) valToClass.set(inv[i], classId++);
+      result.set(i, valToClass.get(inv[i]));
+    }
+    return { classes: result, adj };
+  }
+
+  // ── Find a 6-membered aromatic ring containing atomIdx ──
+  function findAromaticRing(atomIdx, adj, atoms, defaults) {
+    const defaultZ = defaults?.atom?.z ?? 6;
+    // DFS walk along degree-2/3 aromatic carbons/nitrogens
+    function isRingCandidate(idx) {
+      const z = atoms[idx].z ?? defaultZ;
+      return (z === 6 || z === 7) && adj[idx].length >= 2;
+    }
+    // Simple ring walk: try all paths of length 5 from atomIdx back to atomIdx
+    const ring = [atomIdx];
+    function dfs(cur, depth) {
+      if (depth === 5) {
+        return adj[cur].some(e => e.to === atomIdx);
+      }
+      for (const { to } of adj[cur]) {
+        if (to === atomIdx && depth < 4) continue; // too short
+        if (ring.includes(to)) continue;
+        if (!isRingCandidate(to)) continue;
+        ring.push(to);
+        if (dfs(to, depth + 1)) return true;
+        ring.pop();
+      }
+      return false;
+    }
+    if (dfs(atomIdx, 0) && ring.length === 6) return ring;
+    return null;
+  }
+
+  // ── Classify substituent at ring atom for aromatic shift correction ──
+  function classifySubstituent(subAtomIdx, ringAtomIdx, atoms, adj, defaults) {
+    const defaultZ = defaults?.atom?.z ?? 6;
+    const defaultImpHs = defaults?.atom?.impHs ?? 0;
+    const z = atoms[subAtomIdx].z ?? defaultZ;
+    const impHs = atoms[subAtomIdx].impHs ?? defaultImpHs;
+    const deg = adj[subAtomIdx].length;
+
+    // Halogens
+    if (z === 9) return 'F';
+    if (z === 17) return 'Cl';
+    if (z === 35) return 'Br';
+    if (z === 53) return 'I';
+
+    // Nitrogen
+    if (z === 7) {
+      // Check for NO2: N bonded to two O's
+      const oCount = adj[subAtomIdx].filter(e => (atoms[e.to].z ?? defaultZ) === 8).length;
+      if (oCount >= 2) return 'NO2';
+      // Check for amide: N bonded to C=O
+      for (const { to } of adj[subAtomIdx]) {
+        if ((atoms[to].z ?? defaultZ) === 6) {
+          const hasO = adj[to].some(e2 => (atoms[e2.to].z ?? defaultZ) === 8 && e2.to !== subAtomIdx);
+          if (hasO) return 'NHCO';
+        }
+      }
+      if (impHs >= 2) return 'NH2';
+      return 'NR';
+    }
+
+    // Oxygen
+    if (z === 8) {
+      if (impHs >= 1) return 'OH';
+      // Check if bonded to C=O (ester/acyl)
+      for (const { to } of adj[subAtomIdx]) {
+        if (to === ringAtomIdx) continue;
+        if ((atoms[to].z ?? defaultZ) === 6) {
+          const hasDoubleO = adj[to].some(e2 =>
+            (atoms[e2.to].z ?? defaultZ) === 8 && e2.to !== subAtomIdx);
+          if (hasDoubleO) return 'OAc';
+        }
+      }
+      return 'OR';
+    }
+
+    // Carbon substituents
+    if (z === 6) {
+      // Check for C#N
+      for (const { to } of adj[subAtomIdx]) {
+        if ((atoms[to].z ?? defaultZ) === 7 && adj[subAtomIdx].length === 2)
+          return 'CN';
+      }
+      // Check for C=O (carbonyl)
+      let hasDoubleO = false, hasSingleO = false, hasN = false, hasH = (impHs >= 1);
+      for (const { to } of adj[subAtomIdx]) {
+        if (to === ringAtomIdx) continue;
+        const nz = atoms[to].z ?? defaultZ;
+        if (nz === 8 && (atoms[to].impHs ?? defaultImpHs) >= 1) hasSingleO = true;
+        else if (nz === 8) hasDoubleO = true;
+        if (nz === 7) hasN = true;
+      }
+      if (hasDoubleO && hasSingleO) return 'COOH';
+      if (hasDoubleO && hasN) return 'CONR';
+      if (hasDoubleO) return hasH ? 'CHO' : 'COR';
+      // Check for vinyl
+      if (deg <= 3 && adj[subAtomIdx].some(e =>
+        (atoms[e.to].z ?? defaultZ) === 6 && e.to !== ringAtomIdx && adj[e.to].length <= 3))  {
+        // Could be vinyl — simplified check
+      }
+      // Check if bonded to O (ester: -COOR)
+      if (hasDoubleO) return 'COOR';
+      // Another aromatic ring
+      if (adj[subAtomIdx].length >= 2 && adj[subAtomIdx].filter(e =>
+        (atoms[e.to].z ?? defaultZ) === 6 && adj[e.to].length >= 2).length >= 2) return 'aryl';
+      return 'alkyl';
+    }
+
+    return 'alkyl'; // default
+  }
+
+  // ── Compute corrected aromatic shift using substituent influence ──
+  function computeAromaticShift(atomIdx, adj, atoms, defaults) {
+    const baseShift = 7.27; // benzene reference
+    const ring = findAromaticRing(atomIdx, adj, atoms, defaults);
+    if (!ring) return baseShift;
+
+    let correction = 0;
+    const myPos = ring.indexOf(atomIdx);
+
+    for (let i = 0; i < ring.length; i++) {
+      if (i === myPos) continue;
+      const ringAtom = ring[i];
+      // Find non-ring substituents on this ring atom
+      for (const { to: subIdx } of adj[ringAtom]) {
+        if (ring.includes(subIdx)) continue; // skip ring bonds
+        const subType = classifySubstituent(subIdx, ringAtom, atoms, adj, defaults);
+        const corr = AROMATIC_SUB_CORRECTIONS[subType];
+        if (!corr) continue;
+
+        // Determine ortho/meta/para position
+        const dist = Math.min(
+          (i - myPos + ring.length) % ring.length,
+          (myPos - i + ring.length) % ring.length
+        );
+        if (dist === 1) correction += corr.ortho;
+        else if (dist === 2) correction += corr.meta;
+        else if (dist === 3) correction += corr.para;
+      }
+    }
+
+    return Math.round((baseShift + correction) * 100) / 100;
+  }
+
+  // ── Detect diastereotopic CH₂ (adjacent to a stereocenter) ──
+  function isDiastereotopic(atomIdx, adj, atoms, morganClasses, defaults) {
+    const defaultZ = defaults?.atom?.z ?? 6;
+    const defaultImpHs = defaults?.atom?.impHs ?? 0;
+    const impHs = atoms[atomIdx].impHs ?? defaultImpHs;
+    if (impHs !== 2) return false; // only CH₂ can be diastereotopic
+
+    // Check each neighbor: if it's an sp3 center with 4 different substituent classes, it's a stereocenter
+    for (const { to: nbrIdx } of adj[atomIdx]) {
+      const nbrZ = atoms[nbrIdx].z ?? defaultZ;
+      if (nbrZ !== 6) continue; // only carbon stereocenters
+      const nbrDeg = adj[nbrIdx].length;
+      if (nbrDeg < 3) continue; // needs at least 3 explicit bonds + possible impH
+
+      // Get Morgan classes of all substituents (including implicit H as a virtual class)
+      const subClasses = [];
+      for (const { to: subIdx } of adj[nbrIdx]) {
+        subClasses.push(morganClasses.get(subIdx));
+      }
+      const nbrImpHs = atoms[nbrIdx].impHs ?? defaultImpHs;
+      if (nbrImpHs > 0) subClasses.push(-1); // implicit H gets special class
+
+      // Stereocenter: all substituents have different Morgan classes
+      if (new Set(subClasses).size === subClasses.length && subClasses.length >= 4) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ── NMR Prediction Engine ──
+  function predictHNMR(molJsonStr, mol, rdkit) {
+    const molJson = JSON.parse(molJsonStr);
+    const atoms = molJson.molecules[0].atoms;
+    const bonds = molJson.molecules[0].bonds || [];
+    const defaults = molJson.defaults || {};
+    const defaultZ = defaults?.atom?.z ?? 6;
+    const defaultImpHs = defaults?.atom?.impHs ?? 0;
+
+    const { classes: morganClasses, adj } = computeMorganClasses(atoms, bonds, defaults);
+
+    // Group H-bearing heavy atoms by equivalence class
+    const classGroups = new Map(); // classId -> [atomIdx, ...]
+    for (let i = 0; i < atoms.length; i++) {
+      const impHs = atoms[i].impHs ?? defaultImpHs;
+      if (impHs > 0) {
+        const cls = morganClasses.get(i);
+        if (!classGroups.has(cls)) classGroups.set(cls, []);
+        classGroups.get(cls).push(i);
+      }
+    }
+
+    // Also find labile H on heteroatoms (O-H, N-H)
+    const labilGroups = new Map();
+    for (let i = 0; i < atoms.length; i++) {
+      const z = atoms[i].z ?? defaultZ;
+      const impHs = atoms[i].impHs ?? defaultImpHs;
+      if ((z === 7 || z === 8) && impHs > 0) {
+        const cls = morganClasses.get(i);
+        const key = 'labile_' + cls;
+        if (!labilGroups.has(key)) labilGroups.set(key, []);
+        labilGroups.get(key).push(i);
+      }
+    }
+
+    // Pre-create all qmol objects for SMARTS matching
+    const qmols = [];
+    for (const rule of NMR_SHIFT_RULES) {
+      const qmol = rdkit.get_qmol(rule.smarts);
+      qmols.push(qmol);
+    }
+
+    // Get all matches for each SMARTS pattern
+    const allMatches = [];
+    for (let r = 0; r < NMR_SHIFT_RULES.length; r++) {
+      if (!qmols[r] || !qmols[r].is_valid()) {
+        allMatches.push([]);
+        continue;
+      }
+      try {
+        const matchStr = mol.get_substruct_matches(qmols[r]);
+        const parsed = JSON.parse(matchStr);
+        allMatches.push(Array.isArray(parsed) ? parsed : []);
+      } catch(e) {
+        allMatches.push([]);
+      }
+    }
+
+    // Cleanup qmols
+    for (const q of qmols) { if (q) try { q.delete(); } catch(e) {} }
+
+    // Classify each equivalence class
+    function classifyAtom(atomIdx) {
+      for (let r = 0; r < NMR_SHIFT_RULES.length; r++) {
+        const rule = NMR_SHIFT_RULES[r];
+        const matches = allMatches[r];
+        for (const match of matches) {
+          const matchAtoms = match.atoms ?? match;
+          const targetIdx = rule.hOnMatch ?? 0;
+          if (targetIdx < matchAtoms.length && matchAtoms[targetIdx] === atomIdx) {
+            return rule;
+          }
+        }
+      }
+      // Fallback: check if atomIdx appears in any match at position 0
+      for (let r = 0; r < NMR_SHIFT_RULES.length; r++) {
+        const matches = allMatches[r];
+        for (const match of matches) {
+          const matchAtoms = match.atoms ?? match;
+          if (matchAtoms[0] === atomIdx) return NMR_SHIFT_RULES[r];
+        }
+      }
+      return { shift: 1.5, label: 'CH', labile: false };
+    }
+
+    // Determine splitting for a heavy atom
+    function determineSplitting(atomIdx) {
+      const z = atoms[atomIdx].z ?? defaultZ;
+      // Labile protons are singlets (fast exchange)
+      if (z === 7 || z === 8) return { nCoupled: 0, J: [] };
+
+      const myClass = morganClasses.get(atomIdx);
+      let totalCoupled = 0;
+      const jValues = [];
+      const neighbors = adj[atomIdx];
+
+      for (const { to: nbrIdx } of neighbors) {
+        const nbrZ = atoms[nbrIdx].z ?? defaultZ;
+        const nbrImpHs = atoms[nbrIdx].impHs ?? defaultImpHs;
+        if (nbrImpHs === 0) continue;
+        // Skip coupling to labile protons (OH, NH — fast exchange)
+        if (nbrZ === 7 || nbrZ === 8) continue;
+        // Skip coupling to equivalent H (same Morgan class — not observable)
+        if (morganClasses.get(nbrIdx) === myClass) continue;
+
+        const J = 7.0; // default vicinal
+        totalCoupled += nbrImpHs;
+        jValues.push({ nH: nbrImpHs, J });
+      }
+
+      return { nCoupled: totalCoupled, J: jValues };
+    }
+
+    // Determine aromatic splitting separately
+    function determineAromaticSplitting(atomIdx) {
+      const myClass = morganClasses.get(atomIdx);
+      const neighbors = adj[atomIdx];
+      let coupledH = 0;
+      const jValues = [];
+      for (const { to: nbrIdx } of neighbors) {
+        const nbrZ = atoms[nbrIdx].z ?? defaultZ;
+        const nbrImpHs = atoms[nbrIdx].impHs ?? defaultImpHs;
+        // Skip same equivalence class (coupling between equivalent H not observed)
+        if (morganClasses.get(nbrIdx) === myClass) continue;
+        if (nbrZ === 6 && nbrImpHs > 0) {
+          coupledH += nbrImpHs;
+          jValues.push({ nH: nbrImpHs, J: 8.0 });
+        }
+      }
+      return { nCoupled: coupledH, J: jValues };
+    }
+
+    const peaks = [];
+
+    // Helper to build a peak object
+    function makePeak(shift, rule, totalH, splitting, atomIndices, isLabile) {
+      const nPlus1 = splitting.nCoupled + 1;
+      const splitInfo = isLabile
+        ? { name: 'broad singlet', abbrev: 'bs' }
+        : nPlus1 <= 7 ? SPLITTING_NAMES[nPlus1] : { name: 'multiplet', abbrev: 'm' };
+      const jStr = splitting.J.length > 0
+        ? splitting.J.map(j => j.J.toFixed(1)).join(', ') : '';
+      return {
+        shift, assignment: rule.label, hydrogenCount: totalH,
+        splitting: splitInfo.name, splittingAbbrev: splitInfo.abbrev,
+        couplingConstants: splitting.J, jStr, atomIndices,
+        isLabile, nCoupled: splitting.nCoupled,
+      };
+    }
+
+    // Process C-H groups (non-labile)
+    for (const [cls, atomIndices] of classGroups) {
+      const repAtom = atomIndices[0];
+      const z = atoms[repAtom].z ?? defaultZ;
+
+      // Skip heteroatom H (handled as labile)
+      if (z === 7 || z === 8) continue;
+
+      const rule = classifyAtom(repAtom);
+      const impHs = atoms[repAtom].impHs ?? defaultImpHs;
+      const totalH = impHs * atomIndices.length;
+      const isAromatic = rule.label.toLowerCase().includes('aromatic');
+
+      // Use substituent-corrected shift for aromatic H
+      const shift = isAromatic
+        ? computeAromaticShift(repAtom, adj, atoms, defaults)
+        : rule.shift;
+
+      const splitting = isAromatic
+        ? determineAromaticSplitting(repAtom)
+        : determineSplitting(repAtom);
+
+      // Check for diastereotopic CH₂ — split into two 1H peaks
+      // Each Ha/Hb also couples to its geminal partner → nCoupled + 1 (geminal J ≈ 12 Hz)
+      if (impHs === 2 && !isAromatic &&
+          isDiastereotopic(repAtom, adj, atoms, morganClasses, defaults)) {
+        const halfH = atomIndices.length; // each atom contributes 1H per sub-peak
+        const delta = 0.15; // typical diastereotopic shift difference
+        const gemJ = 12.0; // geminal coupling constant (Hz)
+        const diastSplitting = {
+          nCoupled: splitting.nCoupled + 1,
+          J: [{ nH: 1, J: gemJ }, ...splitting.J]
+        };
+        peaks.push(makePeak(
+          Math.round((shift + delta / 2) * 100) / 100,
+          { label: rule.label + ' (Ha)' }, halfH, diastSplitting, atomIndices, false
+        ));
+        peaks.push(makePeak(
+          Math.round((shift - delta / 2) * 100) / 100,
+          { label: rule.label + ' (Hb)' }, halfH, diastSplitting, atomIndices, false
+        ));
+      } else {
+        peaks.push(makePeak(shift, rule, totalH, splitting, atomIndices, false));
+      }
+    }
+
+    // Process labile H (OH, NH)
+    for (const [key, atomIndices] of labilGroups) {
+      const repAtom = atomIndices[0];
+      const rule = classifyAtom(repAtom);
+      const impHs = atoms[repAtom].impHs ?? defaultImpHs;
+      const totalH = impHs * atomIndices.length;
+      peaks.push(makePeak(rule.shift, rule, totalH, { nCoupled: 0, J: [] }, atomIndices, true));
+    }
+
+    peaks.sort((a, b) => b.shift - a.shift);
+
+    return { peaks };
+  }
+
+  // ── NMR Interactive Spectrum Renderer ──
+  function renderNMRSpectrumHTML(peaks) {
+    if (!peaks || peaks.length === 0) return '';
+    // Toolbar icons as inline SVG paths
+    const iconZoomIn = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+    const iconZoomOut = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+    const iconReset = '<svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
+    const iconUp = '<svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>';
+    const iconDown = '<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
+
+    return `
+      <div class="nmr-toolbar" id="nmr-toolbar">
+        <div class="nmr-tb-group">
+          <span class="nmr-tb-label">Zoom</span>
+          <button class="nmr-tb-btn" id="nmr-zoom-in" title="Zoom in">${iconZoomIn}</button>
+          <button class="nmr-tb-btn" id="nmr-zoom-out" title="Zoom out">${iconZoomOut}</button>
+          <button class="nmr-tb-btn" id="nmr-reset" title="Reset view">${iconReset}</button>
+        </div>
+        <div class="nmr-tb-sep"></div>
+        <div class="nmr-tb-group">
+          <span class="nmr-tb-label">Intensity</span>
+          <button class="nmr-tb-btn" id="nmr-int-up" title="Increase intensity">${iconUp}</button>
+          <button class="nmr-tb-btn" id="nmr-int-down" title="Decrease intensity">${iconDown}</button>
+        </div>
+        <div class="nmr-tb-sep"></div>
+        <div class="nmr-tb-group">
+          <button class="nmr-tb-btn" id="nmr-tog-shifts" title="Toggle chemical shifts">δ</button>
+          <button class="nmr-tb-btn" id="nmr-tog-integ" title="Toggle integration curve">∫</button>
+        </div>
+        <div class="nmr-tb-sep"></div>
+        <div class="nmr-tb-group">
+          <span class="nmr-tb-label">Range</span>
+          <input type="number" class="nmr-range-input" id="nmr-range-min" value="-1" step="0.5" title="Min ppm">
+          <span class="nmr-tb-label" style="margin:0 0.1rem">to</span>
+          <input type="number" class="nmr-range-input" id="nmr-range-max" value="15" step="0.5" title="Max ppm">
+          <span class="nmr-tb-label">ppm</span>
+        </div>
+      </div>
+      <div class="nmr-canvas-wrap" id="nmr-canvas-wrap">
+        <canvas id="nmr-canvas"></canvas>
+      </div>`;
+  }
+
+  // ── NMR Interactive Viewer (canvas-based) ──
+  function initNMRViewer(peaks) {
+    const canvas = document.getElementById('nmr-canvas');
+    const wrap = document.getElementById('nmr-canvas-wrap');
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext('2d');
+
+    // State
+    let viewMin = -1, viewMax = 15; // ppm range (reversed on screen: high ppm = left)
+    const FULL_MIN = -1, FULL_MAX = 15;
+    let intensityScale = 1.0;
+    let showShifts = false, showInteg = false;
+
+    // Margins (in canvas pixels)
+    const ML = 10, MR = 10, MT = 30, MB = 38;
+
+    // Precompute sub-peaks
+    const linewidth = 0.012;
+    const subPeaks = [];
+    for (const peak of peaks) {
+      const n = peak.nCoupled + 1;
+      const patIdx = Math.min(n, 7) - 1;
+      const pascal = PASCAL_TRIANGLE[patIdx] || [1];
+      const maxP = Math.max(...pascal);
+      const J = peak.couplingConstants.length > 0 ? peak.couplingConstants[0].J : 0;
+      const jPpm = J / SPEC_FREQ;
+      const center = peak.shift;
+      const totalWidth = (pascal.length - 1) * jPpm;
+      const startPpm = center - totalWidth / 2;
+      for (let i = 0; i < pascal.length; i++) {
+        const amp = (pascal[i] / maxP) * peak.hydrogenCount;
+        const pos = startPpm + i * jPpm;
+        subPeaks.push({ pos, amp, isLabile: peak.isLabile });
+      }
+    }
+
+    // Get theme colors from CSS
+    function getColors() {
+      const s = getComputedStyle(document.documentElement);
+      return {
+        text: s.getPropertyValue('--text').trim() || '#e2e8f0',
+        textDim: s.getPropertyValue('--text-dim').trim() || '#64748b',
+        accent: s.getPropertyValue('--accent').trim() || '#60a5fa',
+        border: s.getPropertyValue('--border').trim() || '#334155',
+        surface: s.getPropertyValue('--surface').trim() || '#1e293b',
+        green: s.getPropertyValue('--green').trim() || '#4ade80',
+      };
+    }
+
+    // Coordinate transforms (use CSS pixels, not canvas buffer pixels)
+    function cssWidth() {
+      return wrap.getBoundingClientRect().width;
+    }
+    function ppmToX(ppm) {
+      const pw = cssWidth() - ML - MR;
+      return ML + (1 - (ppm - viewMin) / (viewMax - viewMin)) * pw;
+    }
+    function xToPpm(x) {
+      const pw = cssWidth() - ML - MR;
+      return (1 - (x - ML) / pw) * (viewMax - viewMin) + viewMin;
+    }
+
+    // Resize canvas to match CSS size at device pixel ratio
+    function resize() {
+      const rect = wrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Sample spectrum for the current view
+    function sampleSpectrum(w, h) {
+      const pw = w - ML - MR;
+      const nSamples = Math.max(pw * 2, 600);
+      const yData = new Float64Array(nSamples);
+      for (let s = 0; s < nSamples; s++) {
+        const ppm = xToPpm(ML + (s / (nSamples - 1)) * pw);
+        let y = 0;
+        for (const sp of subPeaks) {
+          const lw = sp.isLabile ? linewidth * 4 : linewidth;
+          const dx = ppm - sp.pos;
+          y += sp.amp * (lw * lw) / (dx * dx + lw * lw);
+        }
+        yData[s] = y;
+      }
+      return { yData, nSamples };
+    }
+
+    function draw() {
+      resize();
+      const rect = wrap.getBoundingClientRect();
+      const W = rect.width, H = rect.height;
+      const c = getColors();
+      const pw = W - ML - MR, ph = H - MT - MB;
+      const baseline = MT + ph;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Sample spectrum
+      const { yData, nSamples } = sampleSpectrum(W, H);
+      let yMax = 0;
+      for (let s = 0; s < nSamples; s++) if (yData[s] > yMax) yMax = yData[s];
+      if (yMax === 0) yMax = 1;
+      const scale = intensityScale * 0.9;
+
+      // Grid lines
+      ctx.strokeStyle = c.border;
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 0.5;
+      const gridStep = (viewMax - viewMin) > 8 ? 1 : (viewMax - viewMin) > 3 ? 0.5 : 0.25;
+      for (let ppm = Math.ceil(viewMin / gridStep) * gridStep; ppm <= viewMax; ppm += gridStep) {
+        const x = ppmToX(ppm);
+        if (x < ML || x > ML + pw) continue;
+        ctx.beginPath(); ctx.moveTo(x, MT); ctx.lineTo(x, baseline); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // X-axis
+      ctx.strokeStyle = c.textDim;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ML, baseline); ctx.lineTo(ML + pw, baseline); ctx.stroke();
+
+      // Ticks and labels
+      const tickStep = (viewMax - viewMin) > 8 ? 1 : (viewMax - viewMin) > 3 ? 0.5 : 0.25;
+      ctx.font = '9px "IBM Plex Mono", monospace';
+      ctx.fillStyle = c.textDim;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let ppm = Math.ceil(viewMin / tickStep) * tickStep; ppm <= viewMax; ppm += tickStep) {
+        const x = ppmToX(ppm);
+        if (x < ML - 5 || x > ML + pw + 5) continue;
+        ctx.beginPath(); ctx.moveTo(x, baseline); ctx.lineTo(x, baseline + 5); ctx.stroke();
+        const label = tickStep < 1 ? ppm.toFixed(1) : ppm.toFixed(0);
+        ctx.fillText(label, x, baseline + 7);
+      }
+      // Sub-ticks
+      const subStep = tickStep / 2;
+      ctx.lineWidth = 0.5;
+      ctx.globalAlpha = 0.5;
+      for (let ppm = Math.ceil(viewMin / subStep) * subStep; ppm <= viewMax; ppm += subStep) {
+        if (Math.abs(ppm / tickStep - Math.round(ppm / tickStep)) < 0.01) continue;
+        const x = ppmToX(ppm);
+        if (x < ML || x > ML + pw) continue;
+        ctx.beginPath(); ctx.moveTo(x, baseline); ctx.lineTo(x, baseline + 3); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // Axis title
+      ctx.font = '9px "DM Sans", sans-serif';
+      ctx.fillStyle = c.textDim;
+      ctx.fillText('Chemical Shift (ppm)', ML + pw / 2, H - 6);
+
+      // TMS reference line at 0 ppm
+      if (viewMin <= 0 && viewMax >= 0) {
+        const tmsX = ppmToX(0);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = c.textDim;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(tmsX, MT); ctx.lineTo(tmsX, baseline); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.font = '7px "IBM Plex Mono", monospace';
+        ctx.fillStyle = c.textDim;
+        ctx.fillText('TMS', tmsX, baseline + 22);
+      }
+
+      // Spectrum fill + stroke
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ML, 0, pw, H);
+      ctx.clip();
+
+      ctx.beginPath();
+      ctx.moveTo(ML, baseline);
+      for (let s = 0; s < nSamples; s++) {
+        const x = ML + (s / (nSamples - 1)) * pw;
+        const rawY = (yData[s] / yMax) * ph * scale;
+        const y = baseline - Math.min(rawY, ph);
+        if (s === 0) ctx.lineTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.lineTo(ML + pw, baseline);
+      ctx.closePath();
+      ctx.fillStyle = c.accent;
+      ctx.globalAlpha = 0.2;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = c.accent;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let s = 0; s < nSamples; s++) {
+        const x = ML + (s / (nSamples - 1)) * pw;
+        const rawY = (yData[s] / yMax) * ph * scale;
+        const y = baseline - Math.min(rawY, ph);
+        if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Integration curve
+      if (showInteg) {
+        const integH = 18;
+        let runSum = 0;
+        const integData = new Float64Array(nSamples);
+        for (let s = 0; s < nSamples; s++) { runSum += yData[s]; integData[s] = runSum; }
+        const integMax = runSum || 1;
+        ctx.strokeStyle = c.green;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        for (let s = 0; s < nSamples; s++) {
+          const x = ML + (s / (nSamples - 1)) * pw;
+          const y = MT + integH - (integData[s] / integMax) * integH;
+          if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+
+      // Peak labels
+      if (showShifts) {
+        ctx.font = '7.5px "IBM Plex Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const labelY1 = showInteg ? MT + 26 : MT + 8;
+        const labelY2 = labelY1 + 10;
+        for (const peak of peaks) {
+          if (peak.shift < viewMin || peak.shift > viewMax) continue;
+          const x = ppmToX(peak.shift);
+          if (x < ML || x > ML + pw) continue;
+          ctx.fillStyle = c.text;
+          ctx.fillText(peak.shift.toFixed(2), x, labelY1);
+          ctx.fillStyle = c.textDim;
+          ctx.font = '6.5px "IBM Plex Mono", monospace';
+          ctx.fillText(peak.splittingAbbrev + ', ' + peak.hydrogenCount + 'H', x, labelY2);
+          ctx.font = '7.5px "IBM Plex Mono", monospace';
+        }
+      }
+
+      // Hover crosshair (drawn in mousemove handler via hoverPpm)
+      if (hoverPpm !== null && hoverPpm >= viewMin && hoverPpm <= viewMax) {
+        const hx = ppmToX(hoverPpm);
+        ctx.setLineDash([2, 2]);
+        ctx.strokeStyle = c.textDim;
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(hx, MT); ctx.lineTo(hx, baseline); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.font = '8px "IBM Plex Mono", monospace';
+        ctx.fillStyle = c.text;
+        ctx.textAlign = 'center';
+        ctx.fillText(hoverPpm.toFixed(2) + ' ppm', hx, baseline + 30);
+      }
+    }
+
+    // ── Range inputs ──
+    const rangeMinInput = document.getElementById('nmr-range-min');
+    const rangeMaxInput = document.getElementById('nmr-range-max');
+
+    function syncRangeInputs() {
+      if (rangeMinInput) rangeMinInput.value = parseFloat(viewMin.toFixed(1));
+      if (rangeMaxInput) rangeMaxInput.value = parseFloat(viewMax.toFixed(1));
+    }
+
+    function applyRangeInputs() {
+      let lo = parseFloat(rangeMinInput?.value);
+      let hi = parseFloat(rangeMaxInput?.value);
+      if (isNaN(lo) || isNaN(hi)) return;
+      if (lo >= hi) { lo = hi - 0.5; rangeMinInput.value = lo; }
+      viewMin = lo;
+      viewMax = hi;
+      draw();
+    }
+
+    rangeMinInput?.addEventListener('change', applyRangeInputs);
+    rangeMaxInput?.addEventListener('change', applyRangeInputs);
+
+    // ── Interaction state ──
+    let hoverPpm = null;
+    let isDragging = false, dragStartX = 0, dragViewMin = 0, dragViewMax = 0;
+
+    // Mouse events (convert clientX to canvas-relative x)
+    function canvasX(e) {
+      const rect = wrap.getBoundingClientRect();
+      return e.clientX - rect.left;
+    }
+
+    // Zoom centered on cursor
+    function zoom(factor, centerPpm) {
+      const range = viewMax - viewMin;
+      const newRange = Math.max(0.5, Math.min(FULL_MAX - FULL_MIN, range * factor));
+      const ratio = (centerPpm - viewMin) / range;
+      viewMin = centerPpm - ratio * newRange;
+      viewMax = centerPpm + (1 - ratio) * newRange;
+      // Clamp
+      if (viewMin < FULL_MIN) { viewMax += FULL_MIN - viewMin; viewMin = FULL_MIN; }
+      if (viewMax > FULL_MAX) { viewMin -= viewMax - FULL_MAX; viewMax = FULL_MAX; }
+      viewMin = Math.max(FULL_MIN, viewMin);
+      viewMax = Math.min(FULL_MAX, viewMax);
+      syncRangeInputs();
+      draw();
+    }
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const cx = canvasX(e);
+      const ppm = xToPpm(cx);
+      const factor = e.deltaY > 0 ? 1.15 : 0.87;
+      zoom(factor, ppm);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      dragStartX = canvasX(e);
+      dragViewMin = viewMin;
+      dragViewMax = viewMax;
+      wrap.classList.add('dragging');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = canvasX(e) - dragStartX;
+        const pw = wrap.getBoundingClientRect().width - ML - MR;
+        const ppmShift = (dx / pw) * (dragViewMax - dragViewMin);
+        let newMin = dragViewMin + ppmShift; // ppm axis reversed, so + not -
+        let newMax = dragViewMax + ppmShift;
+        if (newMin < FULL_MIN) { newMax += FULL_MIN - newMin; newMin = FULL_MIN; }
+        if (newMax > FULL_MAX) { newMin -= newMax - FULL_MAX; newMax = FULL_MAX; }
+        viewMin = Math.max(FULL_MIN, newMin);
+        viewMax = Math.min(FULL_MAX, newMax);
+        syncRangeInputs();
+        draw();
+      } else {
+        // Hover
+        const rect = wrap.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        if (cx >= 0 && cx <= rect.width && cy >= 0 && cy <= rect.height) {
+          hoverPpm = xToPpm(cx);
+          draw();
+        } else if (hoverPpm !== null) {
+          hoverPpm = null;
+          draw();
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        wrap.classList.remove('dragging');
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (!isDragging) { hoverPpm = null; draw(); }
+    });
+
+    // Touch support for pan
+    let touchStartX = 0, touchViewMin = 0, touchViewMax = 0;
+    let touchStartDist = 0, touchStartRange = 0;
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX - wrap.getBoundingClientRect().left;
+        touchViewMin = viewMin;
+        touchViewMax = viewMax;
+      } else if (e.touches.length === 2) {
+        touchStartDist = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
+        touchStartRange = viewMax - viewMin;
+        touchViewMin = viewMin;
+        touchViewMax = viewMax;
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) {
+        const cx = e.touches[0].clientX - wrap.getBoundingClientRect().left;
+        const dx = cx - touchStartX;
+        const pw = wrap.getBoundingClientRect().width - ML - MR;
+        const ppmShift = (dx / pw) * (touchViewMax - touchViewMin);
+        let newMin = touchViewMin + ppmShift;
+        let newMax = touchViewMax + ppmShift;
+        if (newMin < FULL_MIN) { newMax += FULL_MIN - newMin; newMin = FULL_MIN; }
+        if (newMax > FULL_MAX) { newMin -= newMax - FULL_MAX; newMax = FULL_MAX; }
+        viewMin = Math.max(FULL_MIN, newMin);
+        viewMax = Math.min(FULL_MAX, newMax);
+        syncRangeInputs();
+        draw();
+      } else if (e.touches.length === 2) {
+        const dist = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
+        if (touchStartDist > 0) {
+          const factor = touchStartDist / dist;
+          const newRange = Math.max(0.5, Math.min(FULL_MAX - FULL_MIN, touchStartRange * factor));
+          const center = (touchViewMin + touchViewMax) / 2;
+          viewMin = center - newRange / 2;
+          viewMax = center + newRange / 2;
+          if (viewMin < FULL_MIN) { viewMax += FULL_MIN - viewMin; viewMin = FULL_MIN; }
+          if (viewMax > FULL_MAX) { viewMin -= viewMax - FULL_MAX; viewMax = FULL_MAX; }
+          viewMin = Math.max(FULL_MIN, viewMin);
+          viewMax = Math.min(FULL_MAX, viewMax);
+          syncRangeInputs();
+          draw();
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    // Toolbar buttons
+    document.getElementById('nmr-zoom-in')?.addEventListener('click', () => {
+      zoom(0.7, (viewMin + viewMax) / 2);
+    });
+    document.getElementById('nmr-zoom-out')?.addEventListener('click', () => {
+      zoom(1.4, (viewMin + viewMax) / 2);
+    });
+    document.getElementById('nmr-reset')?.addEventListener('click', () => {
+      viewMin = FULL_MIN; viewMax = FULL_MAX; intensityScale = 1.0;
+      syncRangeInputs(); draw();
+    });
+    document.getElementById('nmr-int-up')?.addEventListener('click', () => {
+      intensityScale = Math.min(intensityScale * 1.4, 50); draw();
+    });
+    document.getElementById('nmr-int-down')?.addEventListener('click', () => {
+      intensityScale = Math.max(intensityScale / 1.4, 0.1); draw();
+    });
+
+    const shiftBtn = document.getElementById('nmr-tog-shifts');
+    shiftBtn?.addEventListener('click', () => {
+      showShifts = !showShifts;
+      shiftBtn.classList.toggle('active', showShifts);
+      draw();
+    });
+
+    const integBtn = document.getElementById('nmr-tog-integ');
+    integBtn?.addEventListener('click', () => {
+      showInteg = !showInteg;
+      integBtn.classList.toggle('active', showInteg);
+      draw();
+    });
+
+    // Observe theme changes to redraw
+    const observer = new MutationObserver(() => draw());
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    // Observe resize
+    const resizeObs = new ResizeObserver(() => draw());
+    resizeObs.observe(wrap);
+
+    // Initial draw
+    draw();
+  }
+
+  // ── NMR Peak Table ──
+  function buildNMRTable(peaks) {
+    return peaks.map(p => {
+      const jCell = p.jStr || '—';
+      return `<tr>
+        <td>${p.shift.toFixed(2)}</td>
+        <td>${p.hydrogenCount}</td>
+        <td>${p.splitting}${p.isLabile ? ' *' : ''}</td>
+        <td>${jCell}</td>
+        <td>${p.assignment}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── DOM refs ──
+  const input     = document.getElementById('smiles-input');
+  const btn       = document.getElementById('convert-btn');
+  const banner    = document.getElementById('status-banner');
+  const spinner   = document.getElementById('status-spinner');
+  const statusTxt = document.getElementById('status-text');
+  const resultsEl = document.getElementById('results');
+  const resultContent = document.getElementById('result-content');
+  const historySection = document.getElementById('history-section');
+  const historyList = document.getElementById('history-list');
+
+  // ── Init RDKit ──
+  initRDKitModule({ locateFile: () => 'https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.wasm' })
+    .then(mod => {
+      RDKit = mod;
+      banner.classList.add('ready');
+      spinner.remove();
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      banner.prepend(dot);
+      statusTxt.textContent = 'RDKit loaded — ready to convert';
+      input.disabled = false;
+      btn.disabled = false;
+      input.focus();
+      // Check for ?smiles= URL parameter first, then restore last molecule
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlSmiles = urlParams.get('smiles');
+      if (urlSmiles) { input.value = urlSmiles; convert(); }
+      else { const lastSmiles = localStorage.getItem('smiles-last'); if (lastSmiles) { input.value = lastSmiles; convert(); } }
+      // Dismiss loading screen
+      const ls = document.getElementById('loading-screen');
+      if (ls) { ls.classList.add('fade-out'); ls.addEventListener('transitionend', () => ls.remove(), { once: true }); }
+    })
+    .catch(err => {
+      banner.classList.add('error');
+      spinner.remove();
+      statusTxt.textContent = 'Failed to load RDKit: ' + err.message;
+      const ls = document.getElementById('loading-screen');
+      if (ls) { ls.classList.add('fade-out'); ls.addEventListener('transitionend', () => ls.remove(), { once: true }); }
+    });
+
+  // ── Events ──
+  btn.addEventListener('click', convert);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') convert(); });
+
+  renderExampleChips();
+
+  // Render any history loaded from localStorage on page load
+  renderHistory();
+
+  // ── Conversion logic ──
+  function convert() {
+    const smiles = input.value.trim();
+    if (!smiles || !RDKit) return;
+
+    const mol = RDKit.get_mol(smiles);
+    if (!mol || !mol.is_valid()) {
+      showError(smiles);
+      if (mol) mol.delete();
+      return;
+    }
+
+    const canonical = mol.get_smiles();
+
+    // Get molecular weight from descriptors (get_mol_formula/get_mol_weight don't exist in MinimalLib)
+    const descriptors = JSON.parse(mol.get_descriptors());
+    const mw = descriptors.amw;
+
+    // Atom counts via MolJSON (includes impHs for implicit hydrogen)
+    const molJson = JSON.parse(mol.get_json());
+    const defaultZ = molJson.defaults?.atom?.z ?? 6;
+    const defaultImpHs = molJson.defaults?.atom?.impHs ?? 0;
+    const atomCounts = {};
+    let totalAtoms = 0;
+    let totalImplicitH = 0;
+
+    for (const atom of molJson.molecules[0].atoms) {
+      const el = Z_TO_ELEM[atom.z ?? defaultZ] || 'C';
+      atomCounts[el] = (atomCounts[el] || 0) + 1;
+      totalAtoms++;
+      // Sum implicit hydrogens from each atom
+      const impHs = atom.impHs ?? defaultImpHs;
+      totalImplicitH += impHs;
+    }
+
+    if (totalImplicitH > 0) {
+      atomCounts['H'] = (atomCounts['H'] || 0) + totalImplicitH;
+      totalAtoms += totalImplicitH;
+    }
+
+    // Build Hill-notation formula string from atom counts
+    const formula = buildHillFormula(atomCounts);
+
+    // 2D structure SVG
+    let svgStr = '';
+    try {
+      svgStr = mol.get_svg_with_highlights(JSON.stringify({
+        width: 300, height: 220,
+        bondLineWidth: 1.5,
+        backgroundColour: [0, 0, 0, 0]
+      }));
+    } catch(e) { /* skip drawing if it fails */ }
+
+    mol.delete();
+
+    // Show immediate results (formula, 2D structure) right away
+    const molJsonStr = JSON.stringify(molJson);
+    showResult({ smiles, canonical, formula, mw: parseFloat(mw).toFixed(4), atomCounts, totalAtoms, svgStr });
+    addHistory(smiles, formula);
+    localStorage.setItem('smiles-last', smiles);
+
+    // Defer NMR prediction so the UI renders immediately
+    const myNmrId = ++nmrConversionId;
+    setTimeout(() => {
+      if (myNmrId !== nmrConversionId) return; // stale
+      let nmrData = null;
+      try {
+        const mol2 = RDKit.get_mol(canonical);
+        if (mol2 && mol2.is_valid()) {
+          // Use mol2's own JSON so atom indices match SMARTS results
+          nmrData = predictHNMR(mol2.get_json(), mol2, RDKit);
+          mol2.delete();
+        }
+      } catch(e) { /* NMR prediction failed */ }
+      if (myNmrId !== nmrConversionId) return; // stale
+      showNMRResult(nmrData);
+    }, 0);
+  }
+
+  function buildHillFormula(counts) {
+    const sorted = hillSort(counts);
+    return sorted.map(([el, n]) => el + (n > 1 ? n : '')).join('');
+  }
+
+  // ── Render results ──
+  function showResult(data) {
+    const subscripted = data.formula.replace(/(\d+)/g, (m) =>
+      [...m].map(d => '₀₁₂₃₄₅₆₇₈₉'[parseInt(d)]).join('')
+    );
+
+    const latex = formulaToLatex(data.formula);
+
+    // Build atom bar segments
+    const sortedAtoms = hillSort(data.atomCounts);
+    const barSegments = sortedAtoms.map(([el, count]) => {
+      const pct = (count / data.totalAtoms * 100);
+      const color = ELEM_COLORS[el] || DEFAULT_COLOR;
+      return `<div class="atom-bar-segment" style="flex:${pct};background:${color}">${el} ${count}</div>`;
+    }).join('');
+
+    const legendItems = sortedAtoms.map(([el, count]) => {
+      const color = ELEM_COLORS[el] || DEFAULT_COLOR;
+      return `<div class="atom-legend-item"><div class="legend-swatch" style="background:${color}"></div>${el}: ${count}</div>`;
+    }).join('');
+
+    // Mass percentage calculation
+    const massPctRows = buildMassPctRows(sortedAtoms, data.mw);
+
+    const copyIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+    const checkIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+    resultContent.innerHTML = `
+      <div class="result-card">
+        <div class="formula-display">
+          <div class="formula">${subscripted}</div>
+          <div class="name-label">${data.formula} · ${data.mw} g/mol</div>
+          <div class="formula-actions">
+            <button class="copy-btn" data-copy="${escAttr(latex)}" title="Copy LaTeX formula">${copyIcon} LaTeX</button>
+          </div>
+        </div>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="label">Input SMILES</div>
+            <div class="value">${escHtml(data.smiles)}</div>
+          </div>
+          <div class="meta-item">
+            <div class="label">Canonical SMILES</div>
+            <div class="value-row">
+              <div class="value">${escHtml(data.canonical)}</div>
+              <button class="copy-btn" data-copy="${escAttr(data.canonical)}" title="Copy canonical SMILES">${copyIcon}</button>
+            </div>
+          </div>
+          <div class="meta-item">
+            <div class="label">Molecular Weight</div>
+            <div class="value">${data.mw} g/mol</div>
+          </div>
+          <div class="meta-item">
+            <div class="label">Total Atoms</div>
+            <div class="value">${data.totalAtoms}</div>
+          </div>
+        </div>
+        <div class="atom-bar-section">
+          <div class="section-label">Composition</div>
+          <div class="atom-bar-track">${barSegments}</div>
+          <div class="atom-legend">${legendItems}</div>
+          <div class="mass-pct-section">
+            <table class="mass-pct-table">
+              <thead><tr><th>Element</th><th>Count</th><th>Mass</th><th>Mass %</th></tr></thead>
+              <tbody>${massPctRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      ${data.svgStr ? `
+      <div class="structure-card">
+        <div class="section-label">2D Structure</div>
+        <div id="structure-svg">${fixSvgColors(data.svgStr)}</div>
+      </div>` : ''}
+      ${typeof $3Dmol !== 'undefined' ? `
+      <div class="viewer-3d-card">
+        <div class="section-label">3D Structure</div>
+        <div id="viewer-3d-container">
+          <div class="viewer-3d-loading">
+            <div class="spinner"></div>
+            <span>Generating 3D coordinates\u2026</span>
+          </div>
+        </div>
+        <div class="viewer-3d-controls">
+          <span class="control-label">Style:</span>
+          <button class="style-btn active" data-style="stick">Stick</button>
+          <button class="style-btn" data-style="ballstick">Ball & Stick</button>
+          <button class="style-btn" data-style="sphere">Sphere</button>
+          <button class="style-btn" data-style="line">Line</button>
+          <span class="control-label" style="margin-left:0.4rem;">Display:</span>
+          <button class="style-btn" id="toggle-h-btn">Hide H</button>
+        </div>
+        <div class="viewer-3d-info">Drag to rotate \u00b7 Scroll to zoom \u00b7 Ctrl+drag to pan</div>
+        <div class="viewer-3d-spin-controls">
+          <label class="spin-toggle">
+            <input type="checkbox" id="spin-toggle-cb">
+            <span>Auto-rotate</span>
+          </label>
+          <input type="range" id="spin-speed" min="0.1" max="5" step="0.1" value="1" disabled>
+          <span class="spin-speed-label" id="spin-speed-label">1.0x</span>
+        </div>
+        <div class="viewer-3d-source" id="viewer-3d-source"></div>
+      </div>` : ''}
+      <div class="nmr-card" id="nmr-card">
+        <div class="section-label"><sup>1</sup>H NMR Prediction <span class="nmr-freq-badge">${SPEC_FREQ} MHz</span></div>
+        <div class="nmr-loading" id="nmr-loading">
+          <div class="spinner"></div>
+          <span>Predicting NMR spectrum\u2026</span>
+        </div>
+      </div>
+    `;
+
+    // Attach copy handlers
+    resultContent.querySelectorAll('.copy-btn[data-copy]').forEach(b => {
+      b.addEventListener('click', () => copyToClipboard(b));
+    });
+
+    // Generate 3D coordinates locally and initialize viewer
+    if (typeof $3Dmol !== 'undefined') {
+      generate3DAndInit(data.canonical);
+    }
+
+    resultsEl.classList.add('visible');
+  }
+
+  // ── Inject NMR results into the loading placeholder ──
+  function showNMRResult(nmrData) {
+    const card = document.getElementById('nmr-card');
+    if (!card) return;
+
+    if (!nmrData || !nmrData.peaks || nmrData.peaks.length === 0) {
+      card.remove(); // No H atoms — hide the NMR card entirely
+      return;
+    }
+
+    const loading = document.getElementById('nmr-loading');
+    if (loading) loading.remove();
+
+    const hasLabile = nmrData.peaks.some(p => p.isLabile);
+    const content = document.createElement('div');
+    content.innerHTML = `
+      <div class="nmr-spectrum-container">
+        ${renderNMRSpectrumHTML(nmrData.peaks)}
+      </div>
+      <table class="mass-pct-table nmr-peak-table">
+        <thead><tr><th>\u03b4 (ppm)</th><th>H</th><th>Multiplicity</th><th><i>J</i> (Hz)</th><th>Assignment</th></tr></thead>
+        <tbody>${buildNMRTable(nmrData.peaks)}</tbody>
+      </table>
+      <div class="nmr-disclaimer">Rule-based prediction (${SPEC_FREQ} MHz) \u2014 not a substitute for experimental data${hasLabile ? ' \u00b7 * Labile protons (OH, NH) appear as broad signals; position varies with solvent' : ''}</div>
+    `;
+    while (content.firstChild) card.appendChild(content.firstChild);
+
+    // Initialize interactive viewer after DOM insertion
+    initNMRViewer(nmrData.peaks);
+  }
+
+  function showError(smiles) {
+    resultContent.innerHTML = `<div class="error-msg">Invalid SMILES string: "${escHtml(smiles)}"</div>`;
+    resultsEl.classList.add('visible');
+  }
+
+  // ── Hill sort: C first, H second, rest alphabetical ──
+  function hillSort(counts) {
+    const entries = Object.entries(counts);
+    if (counts['C']) {
+      const ordered = [];
+      if (counts['C']) ordered.push(['C', counts['C']]);
+      if (counts['H']) ordered.push(['H', counts['H']]);
+      entries.filter(([el]) => el !== 'C' && el !== 'H')
+             .sort((a, b) => a[0].localeCompare(b[0]))
+             .forEach(e => ordered.push(e));
+      return ordered;
+    }
+    return entries.sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
+  // ── Fix RDKit SVG colors for current theme ──
+  function fixSvgColors(svg) {
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--svg-bond').trim();
+    return svg
+      .replace(/fill:#000000/g, `fill:${color}`)
+      .replace(/stroke:#000000/g, `stroke:${color}`)
+      .replace(/fill='#000000'/g, `fill='${color}'`)
+      .replace(/stroke='#000000'/g, `stroke='${color}'`);
+  }
+
+  // ── Example chips (7 random molecules per page load) ──
+  function renderExampleChips() {
+    const bar = document.getElementById('examples-bar');
+    if (!bar) return;
+    const shuffled = [...MOLECULE_LIBRARY].sort(() => Math.random() - 0.5);
+    shuffled.slice(0, 7).forEach(mol => {
+      const btn = document.createElement('button');
+      btn.className = 'chip';
+      btn.textContent = mol.name;
+      btn.addEventListener('click', () => { input.value = mol.smiles; convert(); });
+      bar.appendChild(btn);
+    });
+  }
+
+  // ── History ──
+  function addHistory(smiles, formula) {
+    // Avoid duplicates at top
+    const idx = conversionHistory.findIndex(h => h.smiles === smiles);
+    if (idx !== -1) conversionHistory.splice(idx, 1);
+    conversionHistory.unshift({ smiles, formula });
+    if (conversionHistory.length > 10) conversionHistory.pop();
+    localStorage.setItem('smiles-history', JSON.stringify(conversionHistory));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (conversionHistory.length === 0) { historySection.style.display = 'none'; return; }
+    historySection.style.display = 'block';
+    historyList.innerHTML = conversionHistory.map(h => `
+      <div class="history-item" data-smiles="${escAttr(h.smiles)}">
+        <span class="smiles-col">${escHtml(h.smiles)}</span>
+        <span class="formula-col">${h.formula.replace(/(\d+)/g, m =>
+          [...m].map(d => '₀₁₂₃₄₅₆₇₈₉'[parseInt(d)]).join('')
+        )}</span>
+      </div>
+    `).join('');
+
+    historyList.querySelectorAll('.history-item').forEach(item => {
+      item.addEventListener('click', () => {
+        input.value = item.dataset.smiles;
+        convert();
+      });
+    });
+  }
+
+  // ── 3D Viewer ──
+
+  // Generate 3D coordinates locally using OpenChemLib, fall back to RDKit 2D molblock
+  async function generate3DAndInit(canonical) {
+    const myId = ++viewer3dConversionId;
+    viewer3dStyle = 'stick';
+    viewer3dHideH = false;
+
+    let molBlock = '';
+    let source = '';
+
+    // Wait for OpenChemLib if not yet loaded (module script loads async)
+    if (!window.OCL) {
+      await new Promise((resolve) => {
+        if (window.OCL) return resolve();
+        window.addEventListener('ocl-ready', resolve, { once: true });
+        // Timeout after 15s — fall back to RDKit 2D
+        setTimeout(resolve, 15000);
+      });
+    }
+
+    // Try OpenChemLib 3D conformer generation
+    if (window.OCL && myId === viewer3dConversionId) {
+      try {
+        const oclMol = OCL.Molecule.fromSmiles(canonical);
+        const gen = new OCL.ConformerGenerator(42);
+        gen.initializeConformers(oclMol, {
+          maxTorsionSets: 10000,
+          strategy: OCL.ConformerGenerator.STRATEGY_LIKELY_RANDOM
+        });
+        const conformer = gen.getNextConformerAsMolecule();
+        if (conformer) {
+          molBlock = conformer.toMolfile();
+          source = 'OpenChemLib 3D Conformer';
+        }
+      } catch(e) { /* OpenChemLib generation failed */ }
+    }
+
+    // Fallback: RDKit 2D molblock with explicit H
+    if (!molBlock && myId === viewer3dConversionId) {
+      try {
+        const mol = RDKit.get_mol(canonical);
+        if (mol && mol.is_valid()) {
+          mol.add_hs_in_place();
+          mol.set_new_coords();
+          molBlock = mol.get_molblock();
+          mol.delete();
+          source = 'RDKit 2D (3D unavailable)';
+        }
+      } catch(e) {}
+    }
+
+    // Guard against stale async result (user already converted something else)
+    if (myId !== viewer3dConversionId) return;
+
+    if (molBlock) {
+      init3DViewer(molBlock, source);
+    } else {
+      const container = document.getElementById('viewer-3d-container');
+      if (container) container.innerHTML = '<div class="viewer-3d-loading"><span>3D structure unavailable</span></div>';
+    }
+  }
+
+  function init3DViewer(molBlock, source) {
+    // Cleanup previous viewer
+    if (viewer3d) {
+      try { viewer3d.clear(); } catch(e) {}
+      viewer3d = null;
+    }
+
+    const container = document.getElementById('viewer-3d-container');
+    if (!container) return;
+
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const bgColor = isDark ? '#151a21' : '#ffffff';
+
+    try {
+      container.innerHTML = ''; // clear loading spinner
+      viewer3d = $3Dmol.createViewer(container, {
+        backgroundColor: bgColor,
+        antialias: true,
+      });
+
+      viewer3d.addModel(molBlock, 'sdf');
+      applyViewerStyle('stick');
+      viewer3d.zoomTo();
+      viewer3d.render();
+
+      // Show source label
+      const srcEl = document.getElementById('viewer-3d-source');
+      if (srcEl) srcEl.textContent = source ? `Coordinates: ${source}` : '';
+
+      // Style button handlers
+      const card = container.closest('.viewer-3d-card');
+      card.querySelectorAll('.style-btn[data-style]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          card.querySelectorAll('.style-btn[data-style]').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          viewer3dStyle = btn.dataset.style;
+          applyViewerStyle(viewer3dStyle);
+        });
+      });
+
+      // Hide/Show H toggle
+      const hBtn = document.getElementById('toggle-h-btn');
+      if (hBtn) {
+        hBtn.addEventListener('click', () => {
+          viewer3dHideH = !viewer3dHideH;
+          hBtn.textContent = viewer3dHideH ? 'Show H' : 'Hide H';
+          hBtn.classList.toggle('active', viewer3dHideH);
+          applyViewerStyle(viewer3dStyle);
+        });
+      }
+
+      // Auto-rotate toggle
+      const spinCb = document.getElementById('spin-toggle-cb');
+      const spinSlider = document.getElementById('spin-speed');
+      const spinLabel = document.getElementById('spin-speed-label');
+
+      spinCb.addEventListener('change', () => {
+        if (spinCb.checked) {
+          spinSlider.disabled = false;
+          const speed = parseFloat(spinSlider.value);
+          viewer3d.spin('y', speed);
+        } else {
+          spinSlider.disabled = true;
+          viewer3d.spin(false);
+        }
+      });
+
+      spinSlider.addEventListener('input', () => {
+        const val = parseFloat(spinSlider.value);
+        spinLabel.textContent = val.toFixed(1) + 'x';
+        if (spinCb.checked && viewer3d) {
+          viewer3d.spin('y', val);
+        }
+      });
+
+      // Resize observer for responsive container
+      if (window.ResizeObserver) {
+        const resizeObs = new ResizeObserver(() => {
+          if (viewer3d) viewer3d.resize();
+        });
+        resizeObs.observe(container);
+      }
+
+    } catch(e) {
+      container.innerHTML = '<div class="viewer-3d-loading"><span>3D viewer unavailable</span></div>';
+    }
+  }
+
+  function getStyleObj(styleName) {
+    switch(styleName) {
+      case 'stick':     return { stick: { radius: 0.15 } };
+      case 'ballstick': return { stick: { radius: 0.15 }, sphere: { scale: 0.3 } };
+      case 'sphere':    return { sphere: {} };
+      case 'line':      return { line: {} };
+      default:          return { stick: { radius: 0.15 } };
+    }
+  }
+
+  function applyViewerStyle(styleName) {
+    if (!viewer3d) return;
+    const style = getStyleObj(styleName);
+    // Apply style to all atoms first
+    viewer3d.setStyle({}, style);
+    // If hiding H, make hydrogen atoms invisible
+    if (viewer3dHideH) {
+      viewer3d.setStyle({ elem: 'H' }, { });
+    }
+    viewer3d.render();
+  }
+
+  // ── Formula to LaTeX ──
+  function formulaToLatex(formula) {
+    // "C28H25O3" → "C_{28}H_{25}O_{3}"
+    return formula.replace(/([A-Z][a-z]?)(\d+)/g, '$1_{$2}');
+  }
+
+  // ── Copy to clipboard ──
+  function copyToClipboard(btn) {
+    const text = btn.getAttribute('data-copy');
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add('copied');
+      const orig = btn.innerHTML;
+      const checkIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      const label = btn.textContent.trim();
+      btn.innerHTML = label ? checkIcon + ' ' + label : checkIcon;
+      setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 1500);
+    });
+  }
+
+  // ── Mass percentage rows ──
+  function buildMassPctRows(sortedAtoms, totalMw) {
+    const mw = parseFloat(totalMw);
+    return sortedAtoms.map(([el, count]) => {
+      const aw = ATOMIC_WEIGHT[el] || 0;
+      const mass = aw * count;
+      const pct = mw > 0 ? (mass / mw * 100) : 0;
+      const color = ELEM_COLORS[el] || DEFAULT_COLOR;
+      return `<tr>
+        <td><span class="mass-pct-bar" style="width:${Math.max(pct * 0.6, 4)}px;background:${color}"></span>${el}</td>
+        <td>${count}</td>
+        <td>${mass.toFixed(3)}</td>
+        <td>${pct.toFixed(2)}%</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Theme toggle ──
+  (function initTheme() {
+    const saved = localStorage.getItem('smiles-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  })();
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('smiles-theme', next);
+    // Re-render structure SVG if visible, so bond colors update
+    const svgEl = document.getElementById('structure-svg');
+    if (svgEl && svgEl.querySelector('svg')) {
+      const smiles = input.value.trim();
+      if (smiles && RDKit) {
+        const mol = RDKit.get_mol(smiles);
+        if (mol && mol.is_valid()) {
+          try {
+            const svg = mol.get_svg_with_highlights(JSON.stringify({
+              width: 300, height: 220, bondLineWidth: 1.5, backgroundColour: [0, 0, 0, 0]
+            }));
+            svgEl.innerHTML = fixSvgColors(svg);
+          } catch(e) {}
+          mol.delete();
+        }
+      }
+    }
+    // Update 3D viewer background on theme toggle
+    if (viewer3d) {
+      const bgColor = next === 'light' ? '#ffffff' : '#151a21';
+      viewer3d.setBackgroundColor(bgColor);
+      viewer3d.render();
+    }
+  });
+
+  // ── Utils ──
+  function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function escAttr(s) { return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+</script>
+
+</body>
+</html>

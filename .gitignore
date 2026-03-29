@@ -1,0 +1,6 @@
+# Local RDKit copies (large files, loaded from CDN in production)
+RDKit_minimal.js
+RDKit_minimal.wasm
+
+# Claude Code
+.claude/

@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Molecule Editor</title>
+
+<script>(function(){var t=localStorage.getItem('smiles-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:light)').matches)document.documentElement.setAttribute('data-theme','light');})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root, [data-theme="dark"] {
+    --bg: #0c0f13;
+    --surface: #151a21;
+    --surface-2: #1c222b;
+    --border: #2a3140;
+    --border-focus: #4a7cff;
+    --text: #e4e8ef;
+    --text-dim: #7a8599;
+    --accent: #4a7cff;
+    --accent-glow: rgba(74, 124, 255, 0.15);
+    --green: #34d399;
+    --green-dim: rgba(52, 211, 153, 0.12);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.10);
+    --orange: #fb923c;
+    --svg-bond: #e4e8ef;
+    --ambient-glow: rgba(74,124,255,0.06);
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+
+  [data-theme="light"] {
+    --bg: #f3f5f9;
+    --surface: #ffffff;
+    --surface-2: #eaecf2;
+    --border: #d0d5df;
+    --border-focus: #3b6de8;
+    --text: #1a1f2e;
+    --text-dim: #5f6878;
+    --accent: #3b6de8;
+    --accent-glow: rgba(59, 109, 232, 0.12);
+    --green: #16a364;
+    --green-dim: rgba(22, 163, 100, 0.10);
+    --red: #dc2626;
+    --red-dim: rgba(220, 38, 38, 0.08);
+    --orange: #ea7c1a;
+    --svg-bond: #1a1f2e;
+    --ambient-glow: rgba(59,109,232,0.04);
+  }
+
+  /* -- Loading screen -- */
+  #loading-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    z-index: 9999;
+    transition: opacity 0.4s ease;
+  }
+  #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+  #loading-screen .ls-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  #loading-screen .ls-title {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  #loading-screen .ls-title .arrow { color: var(--accent); }
+  #loading-screen .ls-sub {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    overflow-x: hidden;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  /* -- Ambient background -- */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -40%; left: -20%;
+    width: 80vw; height: 80vw;
+    background: radial-gradient(circle, var(--ambient-glow) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1120px;
+    width: 100%;
+  }
+
+  /* -- Header -- */
+  .header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .header h1 {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.4rem;
+  }
+
+  .header h1 .arrow { color: var(--accent); }
+
+  .header p {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+  }
+
+  .header .nav-link {
+    display: inline-block;
+    margin-top: 0.4rem;
+    color: var(--accent);
+    font-size: 0.82rem;
+    text-decoration: none;
+    font-family: var(--font-mono);
+    transition: opacity 0.15s;
+  }
+  .header .nav-link:hover { opacity: 0.75; }
+
+  /* -- Status banner -- */
+  .loading-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.4rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+
+  .loading-banner.ready {
+    border-color: var(--green);
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .loading-banner.error {
+    border-color: var(--red);
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* -- Main layout: side-by-side -- */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 1rem;
+    align-items: start;
+    margin-bottom: 1rem;
+  }
+
+  /* -- Left column: SMILES I/O + Preview -- */
+  .left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* -- Right column: Editor -- */
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+    font-weight: 500;
+  }
+
+  /* -- Editor card -- */
+  .editor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+
+  #editor-container {
+    width: 100%;
+    height: 520px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  #editor-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* -- SMILES I/O card -- */
+  .smiles-io-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+
+  .smiles-input-wrap {
+    margin-bottom: 0.75rem;
+  }
+
+  .smiles-input-wrap textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    resize: none;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    min-height: 3.5rem;
+    line-height: 1.4;
+    field-sizing: content;
+  }
+
+  .smiles-input-wrap textarea:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .smiles-input-wrap textarea::placeholder { color: var(--text-dim); opacity: 0.6; }
+
+  .smiles-input-wrap textarea.valid {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-dim);
+  }
+
+  .smiles-input-wrap textarea.invalid {
+    border-color: var(--red);
+    box-shadow: 0 0 0 3px var(--red-dim);
+  }
+
+  .smiles-error {
+    font-size: 0.78rem;
+    color: var(--red);
+    font-family: var(--font-mono);
+    margin-bottom: 0.5rem;
+    display: none;
+  }
+  .smiles-error.visible { display: block; }
+
+  .action-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  .btn:hover { opacity: 0.88; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* -- 2D Preview card -- */
+  .preview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+    display: none;
+  }
+
+  .preview-card.visible { display: block; }
+
+  .preview-card .preview-status {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+
+  #preview-svg svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* -- Template chips -- */
+  .templates-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+  }
+
+  .templates-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  .templates-bar .label {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    padding-top: 0.15rem;
+    margin-right: 0.2rem;
+  }
+
+  .chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .chip:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .chip.shuffle-btn {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: transparent;
+  }
+  .chip.shuffle-btn:hover {
+    background: var(--accent-glow);
+  }
+
+  /* -- Hotkey cheat sheet (commented out — re-enable with HTML below)
+  .hotkeys-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+  }
+  .hotkeys-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.2rem 1.5rem;
+  }
+  .hotkeys-group-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+    grid-column: 1 / -1;
+  }
+  .hotkeys-group-title:first-child { margin-top: 0; }
+  .hotkey-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    font-size: 0.78rem;
+  }
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 22px;
+    padding: 0 0.4rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .hotkey-row .hotkey-desc {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+  }
+  -- */
+
+  /* -- Theme toggle -- */
+  .theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 38px; height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    transition: border-color 0.2s, color 0.2s;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .theme-toggle .icon-sun,
+  .theme-toggle .icon-moon { pointer-events: none; }
+
+  [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+  [data-theme="light"] .theme-toggle .icon-moon { display: inline; }
+  :root .theme-toggle .icon-sun,
+  [data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
+  :root .theme-toggle .icon-moon,
+  [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  /* -- Responsive -- */
+  @media (max-width: 800px) {
+    .main-grid {
+      grid-template-columns: 1fr;
+    }
+    .left-col { order: 2; }
+    .right-col { order: 1; }
+    #editor-container { height: 400px; }
+  }
+
+  @media (max-width: 520px) {
+    #editor-container { height: 320px; }
+    .action-col { flex-direction: column; }
+    .header h1 { font-size: 1.3rem; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="ls-spinner"></div>
+  <div class="ls-title">Molecule <span class="arrow">Editor</span></div>
+  <div class="ls-sub">Loading OpenChemLib...</div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
+      <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <h1>Molecule <span class="arrow">Editor</span></h1>
+    <p>Draw molecular structures and generate SMILES</p>
+    <a class="nav-link" href="smiles_to_formula.html">Formula Converter &rarr;</a>
+  </div>
+
+  <div class="loading-banner" id="status-banner">
+    <div class="spinner" id="status-spinner"></div>
+    <span id="status-text">Loading OpenChemLib editor module...</span>
+  </div>
+
+  <!-- Side-by-side: Left = SMILES I/O, Right = Editor -->
+  <div class="main-grid">
+    <!-- Left column -->
+    <div class="left-col">
+      <!-- SMILES input/output -->
+      <div class="smiles-io-card">
+        <div class="section-label">SMILES</div>
+        <div class="smiles-input-wrap">
+          <textarea id="smiles-input" placeholder="Draw or type SMILES..." disabled autocomplete="off" spellcheck="false" rows="2"></textarea>
+        </div>
+        <div class="smiles-error" id="smiles-error">Invalid SMILES string</div>
+        <div class="action-col">
+          <button class="btn" id="copy-btn" disabled data-copy="">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy SMILES
+          </button>
+          <button class="btn-secondary" id="send-btn" disabled>
+            Analyze in Formula Converter &rarr;
+          </button>
+          <button class="btn-secondary" id="clear-btn" disabled>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Template molecule chips -->
+      <div class="templates-section">
+        <div class="section-label">Templates</div>
+        <div class="templates-bar" id="templates-bar">
+          <span class="label">Try:</span>
+        </div>
+      </div>
+
+      <!-- 2D preview via RDKit -->
+      <div class="preview-card" id="preview-card">
+        <div class="section-label">2D Preview (RDKit)</div>
+        <div id="preview-svg">
+          <span class="preview-status">Loading RDKit for 2D preview...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div class="right-col">
+      <div class="editor-card">
+        <div class="section-label">Structure Editor</div>
+        <div id="editor-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hotkey cheat sheet (commented out for now)
+  <div class="hotkeys-card">
+    <div class="section-label">Keyboard Shortcuts</div>
+    <div class="hotkeys-grid">
+      <div class="hotkeys-group-title">Bonds</div>
+      <div class="hotkey-row"><kbd>1</kbd> <span class="hotkey-desc">Single bond</span></div>
+      <div class="hotkey-row"><kbd>2</kbd> <span class="hotkey-desc">Chain tool</span></div>
+      <div class="hotkey-row"><kbd>U</kbd> <span class="hotkey-desc">Up wedge bond</span></div>
+      <div class="hotkey-row"><kbd>D</kbd> <span class="hotkey-desc">Down dash bond</span></div>
+
+      <div class="hotkeys-group-title">Rings</div>
+      <div class="hotkey-row"><kbd>3</kbd> <span class="hotkey-desc">3-membered ring</span></div>
+      <div class="hotkey-row"><kbd>4</kbd> <span class="hotkey-desc">4-membered ring</span></div>
+      <div class="hotkey-row"><kbd>5</kbd> <span class="hotkey-desc">5-membered ring</span></div>
+      <div class="hotkey-row"><kbd>6</kbd> <span class="hotkey-desc">6-membered ring</span></div>
+      <div class="hotkey-row"><kbd>7</kbd> <span class="hotkey-desc">7-membered ring</span></div>
+      <div class="hotkey-row"><kbd>A</kbd> <span class="hotkey-desc">Aromatic ring</span></div>
+
+      <div class="hotkeys-group-title">Atoms</div>
+      <div class="hotkey-row"><kbd>C</kbd> <span class="hotkey-desc">Carbon</span></div>
+      <div class="hotkey-row"><kbd>N</kbd> <span class="hotkey-desc">Nitrogen</span></div>
+      <div class="hotkey-row"><kbd>O</kbd> <span class="hotkey-desc">Oxygen</span></div>
+      <div class="hotkey-row"><kbd>S</kbd> <span class="hotkey-desc">Sulfur</span></div>
+      <div class="hotkey-row"><kbd>P</kbd> <span class="hotkey-desc">Phosphorus</span></div>
+      <div class="hotkey-row"><kbd>F</kbd> <span class="hotkey-desc">Fluorine</span></div>
+      <div class="hotkey-row"><kbd>L</kbd> <span class="hotkey-desc">Chlorine</span></div>
+      <div class="hotkey-row"><kbd>B</kbd> <span class="hotkey-desc">Bromine</span></div>
+      <div class="hotkey-row"><kbd>I</kbd> <span class="hotkey-desc">Iodine</span></div>
+      <div class="hotkey-row"><kbd>H</kbd> <span class="hotkey-desc">Hydrogen</span></div>
+
+      <div class="hotkeys-group-title">Modifiers &amp; Tools</div>
+      <div class="hotkey-row"><kbd>+</kbd> <span class="hotkey-desc">Positive charge</span></div>
+      <div class="hotkey-row"><kbd>-</kbd> <span class="hotkey-desc">Negative charge</span></div>
+      <div class="hotkey-row"><kbd>0</kbd> <span class="hotkey-desc">Delete tool</span></div>
+      <div class="hotkey-row"><kbd>Z</kbd> <span class="hotkey-desc">Zoom tool</span></div>
+      <div class="hotkey-row"><kbd>Space</kbd> <span class="hotkey-desc">Lasso / selection</span></div>
+
+      <div class="hotkeys-group-title">General</div>
+      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd> <span class="hotkey-desc">Undo</span></div>
+      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>C</kbd> <span class="hotkey-desc">Copy</span></div>
+      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>V</kbd> <span class="hotkey-desc">Paste</span></div>
+      <div class="hotkey-row"><kbd>Del</kbd> <span class="hotkey-desc">Delete selected</span></div>
+    </div>
+  </div>
+  -->
+</div>
+
+<!-- RDKit.js for optional 2D preview -->
+<script src="https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.js"></script>
+
+<!-- OpenChemLib full build (includes CanvasEditor) -->
+<script type="module">
+  import OCL from 'https://cdn.jsdelivr.net/npm/openchemlib@8.18.1/full.js/+esm';
+  window.OCL = OCL;
+  window.dispatchEvent(new Event('ocl-full-ready'));
+</script>
+
+<script>
+  // ── Globals ──
+  let editor = null;
+  let RDKit = null;
+  let isUpdating = false;
+  let previewDebounceTimer = null;
+  let smilesDebounceTimer = null;
+
+  // ── DOM refs ──
+  const smilesInput     = document.getElementById('smiles-input');
+  const smilesError     = document.getElementById('smiles-error');
+  const copyBtn         = document.getElementById('copy-btn');
+  const sendBtn         = document.getElementById('send-btn');
+  const clearBtn        = document.getElementById('clear-btn');
+  const statusBanner    = document.getElementById('status-banner');
+  const statusSpinner   = document.getElementById('status-spinner');
+  const statusText      = document.getElementById('status-text');
+  const previewCard     = document.getElementById('preview-card');
+  const previewSvg      = document.getElementById('preview-svg');
+  const editorContainer = document.getElementById('editor-container');
+
+  // ── Template molecules ──
+  const TEMPLATES = [
+    { name: 'Benzene',       smiles: 'c1ccccc1' },
+    { name: 'Cyclohexane',   smiles: 'C1CCCCC1' },
+    { name: 'Cyclopentane',  smiles: 'C1CCCC1' },
+    { name: 'Pyridine',      smiles: 'c1ccncc1' },
+    { name: 'Furan',         smiles: 'c1ccoc1' },
+    { name: 'Thiophene',     smiles: 'c1ccsc1' },
+    { name: 'Imidazole',     smiles: 'c1cnc[nH]1' },
+    { name: 'Naphthalene',   smiles: 'c1ccc2ccccc2c1' },
+    { name: 'Phenol',        smiles: 'Oc1ccccc1' },
+    { name: 'Aniline',       smiles: 'Nc1ccccc1' },
+    { name: 'Acetic acid',   smiles: 'CC(=O)O' },
+    { name: 'Methanol',      smiles: 'CO' },
+    { name: 'Ethanol',       smiles: 'CCO' },
+    { name: 'Acetone',       smiles: 'CC(C)=O' },
+    { name: 'Caffeine',      smiles: 'Cn1c(=O)c2c(ncn2C)n(C)c1=O' },
+    { name: 'Aspirin',       smiles: 'CC(=O)Oc1ccccc1C(=O)O' },
+    { name: 'Glucose',       smiles: 'OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O' },
+    { name: 'Indole',        smiles: 'c1ccc2[nH]ccc2c1' },
+    { name: 'Quinoline',     smiles: 'c1ccnc2ccccc12' },
+    { name: 'Toluene',       smiles: 'Cc1ccccc1' },
+    { name: 'Glycine',       smiles: 'NCC(=O)O' },
+    { name: 'Alanine',       smiles: 'C[C@@H](N)C(=O)O' },
+    { name: 'Urea',          smiles: 'NC(N)=O' },
+    { name: 'Piperidine',    smiles: 'C1CCNCC1' },
+  ];
+
+  // ── Render template chips ──
+  function renderTemplateChips() {
+    const bar = document.getElementById('templates-bar');
+    const label = bar.querySelector('.label');
+    bar.innerHTML = '';
+    bar.appendChild(label);
+
+    const shuffled = [...TEMPLATES].sort(() => Math.random() - 0.5);
+    shuffled.slice(0, 10).forEach(tmpl => {
+      const btn = document.createElement('button');
+      btn.className = 'chip';
+      btn.textContent = tmpl.name;
+      btn.addEventListener('click', () => loadSmiles(tmpl.smiles));
+      bar.appendChild(btn);
+    });
+
+    const shuffleBtn = document.createElement('button');
+    shuffleBtn.className = 'chip shuffle-btn';
+    shuffleBtn.textContent = 'Shuffle';
+    shuffleBtn.addEventListener('click', renderTemplateChips);
+    bar.appendChild(shuffleBtn);
+  }
+
+  // ── Load SMILES into editor (shared helper) ──
+  function loadSmiles(smiles) {
+    if (!editor || !window.OCL || !smiles) return false;
+    try {
+      isUpdating = true;
+      const mol = window.OCL.Molecule.fromSmiles(smiles);
+      mol.inventCoordinates();
+      editor.setMolecule(mol);
+      const canonical = mol.toIsomericSmiles();
+      smilesInput.value = canonical;
+      updateCopyData(canonical);
+      clearSmilesError();
+      smilesInput.classList.remove('invalid');
+      smilesInput.classList.add('valid');
+      debouncedPreview(canonical);
+      return true;
+    } catch (e) {
+      console.error('Failed to load SMILES:', smiles, e);
+      return false;
+    } finally {
+      isUpdating = false;
+    }
+  }
+
+  // ── Update copy button data ──
+  function updateCopyData(smiles) {
+    copyBtn.setAttribute('data-copy', smiles || '');
+    copyBtn.disabled = !smiles;
+    sendBtn.disabled = !smiles;
+  }
+
+  // ── SMILES error display ──
+  function showSmilesError(msg) {
+    smilesError.textContent = msg;
+    smilesError.classList.add('visible');
+    smilesInput.classList.remove('valid');
+    smilesInput.classList.add('invalid');
+  }
+
+  function clearSmilesError() {
+    smilesError.classList.remove('visible');
+    smilesInput.classList.remove('invalid');
+  }
+
+  // ── Structure -> SMILES ──
+  function onEditorChange(eventType, isUserEvent) {
+    if (isUpdating) return;
+    isUpdating = true;
+    try {
+      const mol = editor.getMolecule();
+      const smiles = mol.toIsomericSmiles();
+      smilesInput.value = smiles;
+      updateCopyData(smiles);
+      clearSmilesError();
+      if (smiles) {
+        smilesInput.classList.add('valid');
+        debouncedPreview(smiles);
+      } else {
+        smilesInput.classList.remove('valid');
+        hidePreview();
+      }
+    } catch (e) {
+      console.error('Editor change error:', e);
+    } finally {
+      isUpdating = false;
+    }
+  }
+
+  // ── SMILES -> Structure ──
+  function onSmilesInput() {
+    if (isUpdating) return;
+    clearTimeout(smilesDebounceTimer);
+    smilesDebounceTimer = setTimeout(() => applySmilesFromInput(), 500);
+  }
+
+  function onSmilesKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(smilesDebounceTimer);
+      applySmilesFromInput();
+    }
+  }
+
+  function applySmilesFromInput() {
+    if (isUpdating || !editor || !window.OCL) return;
+    const smiles = smilesInput.value.trim();
+    if (!smiles) {
+      clearEditor();
+      return;
+    }
+    if (!loadSmiles(smiles)) {
+      showSmilesError('Invalid SMILES string');
+      updateCopyData('');
+      hidePreview();
+    }
+  }
+
+  // ── Copy to clipboard ──
+  function copyToClipboard(btn) {
+    const text = btn.getAttribute('data-copy');
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add('copied');
+      const orig = btn.innerHTML;
+      const checkIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.innerHTML = checkIcon + ' Copied!';
+      setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 1500);
+    });
+  }
+
+  // ── Send to formula converter ──
+  function sendToConverter() {
+    const smiles = smilesInput.value.trim();
+    if (!smiles) return;
+    window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(smiles), '_blank');
+  }
+
+  // ── Clear editor ──
+  function clearEditor() {
+    if (!editor) return;
+    isUpdating = true;
+    editor.clearAll();
+    smilesInput.value = '';
+    updateCopyData('');
+    clearSmilesError();
+    smilesInput.classList.remove('valid', 'invalid');
+    hidePreview();
+    isUpdating = false;
+  }
+
+  // ── 2D Preview ──
+  function debouncedPreview(smiles) {
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => renderPreview(smiles), 300);
+  }
+
+  function renderPreview(smiles) {
+    if (!RDKit || !smiles) { hidePreview(); return; }
+    let mol = null;
+    try {
+      mol = RDKit.get_mol(smiles);
+      if (mol && mol.is_valid()) {
+        const svg = mol.get_svg_with_highlights(JSON.stringify({
+          width: 300, height: 220, bondLineWidth: 1.5, backgroundColour: [0, 0, 0, 0]
+        }));
+        previewSvg.innerHTML = fixSvgColors(svg);
+        previewCard.classList.add('visible');
+      } else {
+        hidePreview();
+      }
+    } catch (e) {
+      hidePreview();
+    } finally {
+      if (mol) mol.delete();
+    }
+  }
+
+  function hidePreview() {
+    previewCard.classList.remove('visible');
+    previewSvg.innerHTML = '<span class="preview-status">Draw a molecule to see 2D preview</span>';
+  }
+
+  function fixSvgColors(svg) {
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--svg-bond').trim();
+    return svg
+      .replace(/fill:#000000/g, 'fill:' + color)
+      .replace(/stroke:#000000/g, 'stroke:' + color)
+      .replace(/fill='#000000'/g, "fill='" + color + "'")
+      .replace(/stroke='#000000'/g, "stroke='" + color + "'");
+  }
+
+  // ── Initialize editor ──
+  function initEditor() {
+    if (!window.OCL || !window.OCL.CanvasEditor) {
+      statusBanner.classList.add('error');
+      statusSpinner.style.display = 'none';
+      statusText.textContent = 'Error: CanvasEditor not available in this build';
+      return false;
+    }
+
+    try {
+      editor = new window.OCL.CanvasEditor(editorContainer, {
+        initialMode: 'molecule'
+      });
+
+      editor.setOnChangeListener(onEditorChange);
+
+      smilesInput.disabled = false;
+      clearBtn.disabled = false;
+
+      smilesInput.addEventListener('input', onSmilesInput);
+      smilesInput.addEventListener('keydown', onSmilesKeydown);
+      copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
+      sendBtn.addEventListener('click', sendToConverter);
+      clearBtn.addEventListener('click', clearEditor);
+
+      statusBanner.classList.add('ready');
+      statusSpinner.outerHTML = '<div class="dot"></div>';
+      statusText.textContent = 'Editor ready — draw a molecule or type SMILES';
+
+      return true;
+    } catch (e) {
+      console.error('Failed to initialize CanvasEditor:', e);
+      statusBanner.classList.add('error');
+      statusSpinner.style.display = 'none';
+      statusText.textContent = 'Error initializing editor: ' + e.message;
+      return false;
+    }
+  }
+
+  // ── Load from URL param ──
+  function loadFromUrl() {
+    const smiles = new URLSearchParams(window.location.search).get('smiles');
+    if (smiles) loadSmiles(smiles); // URLSearchParams.get() already decodes
+  }
+
+  // ── Wait for OpenChemLib ──
+  let oclTimeout = null;
+
+  function onOclReady() {
+    clearTimeout(oclTimeout);
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('fade-out');
+      setTimeout(() => loadingScreen.remove(), 500);
+    }
+
+    const success = initEditor();
+    if (success) {
+      renderTemplateChips();
+      loadFromUrl();
+    }
+  }
+
+  window.addEventListener('ocl-full-ready', onOclReady, { once: true });
+
+  oclTimeout = setTimeout(() => {
+    window.removeEventListener('ocl-full-ready', onOclReady);
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('fade-out');
+      setTimeout(() => loadingScreen.remove(), 500);
+    }
+    statusBanner.classList.add('error');
+    statusSpinner.style.display = 'none';
+    statusText.textContent = 'Timed out loading OpenChemLib. Please refresh the page.';
+  }, 20000);
+
+  // ── RDKit for 2D preview (non-blocking) ──
+  if (typeof initRDKitModule === 'function') {
+    initRDKitModule({
+      locateFile: () => 'https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.wasm'
+    }).then(mod => {
+      RDKit = mod;
+      const current = smilesInput.value.trim();
+      if (current) renderPreview(current);
+    }).catch(e => {
+      console.warn('RDKit failed to load (2D preview unavailable):', e);
+    });
+  }
+
+  // ── Theme toggle ──
+  (function initTheme() {
+    const saved = localStorage.getItem('smiles-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  })();
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('smiles-theme', next);
+    const smiles = smilesInput.value.trim();
+    if (smiles && RDKit) renderPreview(smiles);
+  });
+</script>
+</body>
+</html>

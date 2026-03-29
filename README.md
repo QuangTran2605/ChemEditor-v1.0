@@ -1,4 +1,4 @@
-# ChemEditor v1.0
+# ChemEditor v1.0 - link: https://quangtran2605.github.io/ChemEditor-v1.0/
 
 A client-side molecular chemistry toolkit with two interconnected tools:
 

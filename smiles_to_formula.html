@@ -2336,11 +2336,18 @@
       }));
     } catch(e) { /* skip drawing if it fails */ }
 
+    // InChIKey
+    let inchiKey = '';
+    try {
+      const inchi = mol.get_inchi();
+      if (inchi) inchiKey = RDKit.get_inchikey_for_inchi(inchi);
+    } catch(e) { /* InChIKey generation not supported or failed */ }
+
     mol.delete();
 
     // Show immediate results (formula, 2D structure) right away
     const molJsonStr = JSON.stringify(molJson);
-    showResult({ smiles, canonical, formula, mw: parseFloat(mw).toFixed(4), atomCounts, totalAtoms, svgStr });
+    showResult({ smiles, canonical, formula, mw: parseFloat(mw).toFixed(4), atomCounts, totalAtoms, svgStr, inchiKey });
     addHistory(smiles, formula);
     localStorage.setItem('smiles-last', smiles);
 
@@ -2423,6 +2430,13 @@
             <div class="label">Total Atoms</div>
             <div class="value">${data.totalAtoms}</div>
           </div>
+          ${data.inchiKey ? `<div class="meta-item" style="grid-column:1/-1">
+            <div class="label">InChIKey</div>
+            <div class="value-row">
+              <div class="value">${escHtml(data.inchiKey)}</div>
+              <button class="copy-btn" data-copy="${escAttr(data.inchiKey)}" title="Copy InChIKey">${copyIcon}</button>
+            </div>
+          </div>` : ''}
         </div>
         <div class="atom-bar-section">
           <div class="section-label">Composition</div>

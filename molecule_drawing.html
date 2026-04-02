@@ -626,10 +626,26 @@
       await this._ketcher.setMolecule(structureString);
     }
 
+    get isReady() { return this._ready && !!this._ketcher; }
+
     async clear() {
       if (!this._ketcher) throw new Error('Ketcher not ready');
-      // Ketcher API: setMolecule with empty string clears the canvas
       await this._ketcher.setMolecule('');
+    }
+
+    async getSmarts() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      return await this._ketcher.getSmarts();
+    }
+
+    async getRxn() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      return await this._ketcher.getRxn();
+    }
+
+    async getCDXml() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      return await this._ketcher.getCDXml();
     }
 
     // Inject CSS into the same-origin Ketcher iframe
@@ -705,7 +721,11 @@
     bar.innerHTML = '';
     bar.appendChild(label);
 
-    const shuffled = [...TEMPLATES].sort(() => Math.random() - 0.5);
+    const shuffled = [...TEMPLATES];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
     shuffled.slice(0, 10).forEach(tmpl => {
       const btn = document.createElement('button');
       btn.className = 'chip';
@@ -806,12 +826,15 @@
   function copyToClipboard(btn) {
     const text = btn.getAttribute('data-copy');
     if (!text) return;
+    const orig = btn.innerHTML;
     navigator.clipboard.writeText(text).then(() => {
       btn.classList.add('copied');
-      const orig = btn.innerHTML;
       const checkIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       btn.innerHTML = checkIcon + ' Copied!';
       setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 1500);
+    }).catch(() => {
+      btn.textContent = 'Copy failed';
+      setTimeout(() => { btn.innerHTML = orig; }, 1500);
     });
   }
 
@@ -829,13 +852,24 @@
       await ketcherBridge.clear();
     } catch (e) {
       console.error('Clear failed:', e);
+    } finally {
+      currentSmiles = '';
+      smilesInput.value = '';
+      updateCopyData('');
+      clearSmilesError();
+      smilesInput.classList.remove('valid', 'invalid');
+      isUpdating = false;
     }
-    currentSmiles = '';
-    smilesInput.value = '';
-    updateCopyData('');
-    clearSmilesError();
-    smilesInput.classList.remove('valid', 'invalid');
-    isUpdating = false;
+  }
+
+  // ── RDKit mol helper — always cleans up, even on invalid SMILES ──
+  function withRDKitMol(smiles, fn) {
+    const mol = RDKit.get_mol(smiles);
+    try {
+      if (mol && mol.is_valid()) fn(mol);
+    } finally {
+      if (mol) mol.delete();
+    }
   }
 
   // ── Export format toolbar ──
@@ -867,6 +901,8 @@
 
   async function refreshExport() {
     if (!currentSmiles && activeExportFormat !== 'smiles') {
+      smilesInput.value = '';
+      updateCopyData('');
       return;
     }
 
@@ -876,48 +912,30 @@
         updateCopyData(currentSmiles);
         break;
       case 'molfile':
-        if (RDKit) {
-          const mol = RDKit.get_mol(currentSmiles);
-          if (mol && mol.is_valid()) {
-            const molblock = mol.get_molblock();
-            smilesInput.value = molblock;
-            updateCopyData(molblock);
-            mol.delete();
-          }
-        } else {
-          smilesInput.value = 'Loading RDKit...';
-          updateCopyData('');
-        }
-        break;
       case 'inchi':
-        if (RDKit) {
-          const mol2 = RDKit.get_mol(currentSmiles);
-          if (mol2 && mol2.is_valid()) {
-            const inchi = mol2.get_inchi();
-            smilesInput.value = inchi;
-            updateCopyData(inchi);
-            mol2.delete();
-          }
-        } else {
-          smilesInput.value = 'Loading RDKit...';
-          updateCopyData('');
-        }
-        break;
       case 'inchikey':
         if (RDKit) {
-          const mol3 = RDKit.get_mol(currentSmiles);
-          if (mol3 && mol3.is_valid()) {
-            const inchi3 = mol3.get_inchi();
-            try {
-              const key = RDKit.get_inchikey_for_inchi(inchi3);
-              smilesInput.value = key;
-              updateCopyData(key);
-            } catch {
-              smilesInput.value = 'InChIKey generation not available';
-              updateCopyData('');
+          withRDKitMol(currentSmiles, (mol) => {
+            if (activeExportFormat === 'molfile') {
+              const molblock = mol.get_molblock();
+              smilesInput.value = molblock;
+              updateCopyData(molblock);
+            } else if (activeExportFormat === 'inchi') {
+              const inchi = mol.get_inchi();
+              smilesInput.value = inchi;
+              updateCopyData(inchi);
+            } else {
+              const inchi = mol.get_inchi();
+              try {
+                const key = RDKit.get_inchikey_for_inchi(inchi);
+                smilesInput.value = key;
+                updateCopyData(key);
+              } catch {
+                smilesInput.value = 'InChIKey generation not available';
+                updateCopyData('');
+              }
             }
-            mol3.delete();
-          }
+          });
         } else {
           smilesInput.value = 'Loading RDKit...';
           updateCopyData('');
@@ -925,7 +943,7 @@
         break;
       case 'smarts':
         try {
-          const smarts = await ketcherBridge._ketcher.getSmarts();
+          const smarts = await ketcherBridge.getSmarts();
           smilesInput.value = smarts;
           updateCopyData(smarts);
         } catch (e) {
@@ -935,7 +953,7 @@
         break;
       case 'rxn':
         try {
-          const rxn = await ketcherBridge._ketcher.getRxn();
+          const rxn = await ketcherBridge.getRxn();
           smilesInput.value = rxn;
           updateCopyData(rxn);
         } catch (e) {
@@ -945,7 +963,7 @@
         break;
       case 'cdxml':
         try {
-          const cdxml = await ketcherBridge._ketcher.getCDXml();
+          const cdxml = await ketcherBridge.getCDXml();
           smilesInput.value = cdxml;
           updateCopyData(cdxml);
         } catch (e) {

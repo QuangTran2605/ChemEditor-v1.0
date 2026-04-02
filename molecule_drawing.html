@@ -236,6 +236,7 @@
   }
 
   #editor-container {
+    position: relative;
     width: 100%;
     height: 520px;
     border-radius: 8px;
@@ -250,6 +251,26 @@
     border: none;
     border-radius: 8px;
     background: #fff;
+  }
+
+  /* Cover the 3D and fullscreen buttons in Ketcher's top-right toolbar */
+  .ketcher-button-cover {
+    position: absolute;
+    background: #fff;
+    z-index: 2;
+    pointer-events: auto;
+  }
+  .ketcher-cover-3d {
+    top: 1px;
+    right: 17px;
+    width: 68px;
+    height: 30px;
+  }
+  .ketcher-cover-fullscreen {
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 30px;
   }
 
   /* -- SMILES I/O card -- */
@@ -361,28 +382,6 @@
   }
   .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* -- 2D Preview card -- */
-  .preview-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
-    display: none;
-  }
-
-  .preview-card.visible { display: block; }
-
-  .preview-card .preview-status {
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-  }
-
-  #preview-svg svg {
-    max-width: 100%;
-    height: auto;
-  }
 
   /* -- Template chips -- */
   .templates-section {
@@ -550,9 +549,15 @@
         </div>
         <div class="smiles-error" id="smiles-error">Invalid SMILES string</div>
         <div class="action-col">
-          <button class="btn" id="copy-btn" disabled data-copy="">
+          <button class="btn" id="load-editor-btn" disabled>
+            Load into Editor &darr;
+          </button>
+          <button class="btn" id="get-smiles-btn" disabled>
+            Get SMILES from Editor &uarr;
+          </button>
+          <button class="btn-secondary" id="copy-btn" disabled data-copy="">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy SMILES
+            Copy
           </button>
           <button class="btn-secondary" id="send-btn" disabled>
             Analyze in Formula Converter &rarr;
@@ -571,13 +576,6 @@
         </div>
       </div>
 
-      <!-- 2D preview via RDKit -->
-      <div class="preview-card" id="preview-card">
-        <div class="section-label">2D Preview (RDKit)</div>
-        <div id="preview-svg">
-          <span class="preview-status">Loading RDKit for 2D preview...</span>
-        </div>
-      </div>
     </div>
 
     <!-- Right column -->
@@ -602,11 +600,14 @@
              run docker build -t ketcher . && docker run -p 8080:80 ketcher,
              then change src to http://localhost:8080 -->
         <div id="editor-container">
+          <div class="ketcher-button-cover ketcher-cover-3d"></div>
+          <div class="ketcher-button-cover ketcher-cover-fullscreen"></div>
           <iframe
             id="ketcher-frame"
             src="https://ketcher.mireklzicar.com/"
             title="Ketcher Chemical Structure Editor"
             allow="clipboard-read; clipboard-write"
+            tabindex="0"
           ></iframe>
         </div>
       </div>
@@ -614,7 +615,7 @@
   </div>
 </div>
 
-<!-- RDKit.js for optional 2D preview -->
+<!-- RDKit.js for export format conversions -->
 <script src="https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.js"></script>
 
 <script>
@@ -623,7 +624,6 @@
     constructor(iframeElement, options = {}) {
       this.iframe = iframeElement;
       this.onReady = options.onReady || (() => {});
-      this.onSmilesChange = options.onSmilesChange || (() => {});
       this.readyTimeout = options.readyTimeout || 30000;
       this._pending = {};
       this._ready = false;
@@ -651,12 +651,6 @@
           this._ready = true;
           clearTimeout(this._readyTimer);
           this.onReady();
-          break;
-
-        case 'smiles-update':
-          if (this._ready) {
-            this.onSmilesChange(data.smiles || '');
-          }
           break;
 
         case 'smiles':
@@ -743,8 +737,6 @@
   let currentSmiles = '';
   let RDKit = null;
   let isUpdating = false;
-  let previewDebounceTimer = null;
-  let smilesDebounceTimer = null;
 
   // ── DOM refs ──
   const smilesInput     = document.getElementById('smiles-input');
@@ -752,11 +744,11 @@
   const copyBtn         = document.getElementById('copy-btn');
   const sendBtn         = document.getElementById('send-btn');
   const clearBtn        = document.getElementById('clear-btn');
+  const loadEditorBtn   = document.getElementById('load-editor-btn');
+  const getSmilesBtn    = document.getElementById('get-smiles-btn');
   const statusBanner    = document.getElementById('status-banner');
   const statusSpinner   = document.getElementById('status-spinner');
   const statusText      = document.getElementById('status-text');
-  const previewCard     = document.getElementById('preview-card');
-  const previewSvg      = document.getElementById('preview-svg');
   const ketcherFrame    = document.getElementById('ketcher-frame');
   const ioLabel         = document.getElementById('io-label');
 
@@ -811,7 +803,7 @@
     bar.appendChild(shuffleBtn);
   }
 
-  // ── Load SMILES into editor (shared helper) ──
+  // ── Load SMILES into editor (clears first, then sets) ──
   async function loadSmiles(smiles) {
     if (!ketcherBridge || !smiles) return false;
     try {
@@ -827,13 +819,54 @@
       clearSmilesError();
       smilesInput.classList.remove('invalid');
       smilesInput.classList.add('valid');
-      debouncedPreview(smiles);
       return true;
     } catch (e) {
       console.error('Failed to load SMILES:', smiles, e);
       return false;
     } finally {
       isUpdating = false;
+    }
+  }
+
+  // ── Get SMILES from editor (manual pull) ──
+  async function getSmilesFromEditor() {
+    if (!ketcherBridge) return;
+    try {
+      const smiles = await ketcherBridge.getSmiles();
+      currentSmiles = smiles || '';
+      if (activeExportFormat === 'smiles') {
+        smilesInput.value = currentSmiles;
+        updateCopyData(currentSmiles);
+      } else {
+        refreshExport();
+      }
+      clearSmilesError();
+      if (currentSmiles) {
+        smilesInput.classList.add('valid');
+        smilesInput.classList.remove('invalid');
+      } else {
+        smilesInput.classList.remove('valid', 'invalid');
+        smilesInput.value = '';
+        updateCopyData('');
+      }
+    } catch (e) {
+      console.error('Failed to get SMILES:', e);
+      showSmilesError('Could not read SMILES from editor');
+    }
+  }
+
+  // ── Load SMILES from textarea into editor (manual push) ──
+  async function loadFromTextarea() {
+    if (isUpdating || !ketcherBridge) return;
+    const smiles = smilesInput.value.trim();
+    if (!smiles) {
+      clearEditor();
+      return;
+    }
+    const success = await loadSmiles(smiles);
+    if (!success) {
+      showSmilesError('Invalid SMILES string');
+      updateCopyData('');
     }
   }
 
@@ -855,67 +888,6 @@
   function clearSmilesError() {
     smilesError.classList.remove('visible');
     smilesInput.classList.remove('invalid');
-  }
-
-  // ── Structure -> SMILES (from Ketcher change callback) ──
-  function onEditorChange(smiles) {
-    if (isUpdating) return;
-    isUpdating = true;
-    try {
-      currentSmiles = smiles || '';
-      if (activeExportFormat === 'smiles') {
-        smilesInput.value = smiles || '';
-        updateCopyData(smiles || '');
-      } else {
-        refreshExport();
-      }
-      clearSmilesError();
-      if (smiles) {
-        smilesInput.classList.add('valid');
-        debouncedPreview(smiles);
-      } else {
-        smilesInput.classList.remove('valid');
-        hidePreview();
-        if (activeExportFormat !== 'smiles') {
-          smilesInput.value = '';
-          updateCopyData('');
-        }
-      }
-    } catch (e) {
-      console.error('Editor change error:', e);
-    } finally {
-      isUpdating = false;
-    }
-  }
-
-  // ── SMILES -> Structure ──
-  function onSmilesInput() {
-    if (isUpdating) return;
-    clearTimeout(smilesDebounceTimer);
-    smilesDebounceTimer = setTimeout(() => applySmilesFromInput(), 500);
-  }
-
-  function onSmilesKeydown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      clearTimeout(smilesDebounceTimer);
-      applySmilesFromInput();
-    }
-  }
-
-  async function applySmilesFromInput() {
-    if (isUpdating || !ketcherBridge) return;
-    const smiles = smilesInput.value.trim();
-    if (!smiles) {
-      clearEditor();
-      return;
-    }
-    const success = await loadSmiles(smiles);
-    if (!success) {
-      showSmilesError('Invalid SMILES string');
-      updateCopyData('');
-      hidePreview();
-    }
   }
 
   // ── Copy to clipboard ──
@@ -951,7 +923,6 @@
     updateCopyData('');
     clearSmilesError();
     smilesInput.classList.remove('valid', 'invalid');
-    hidePreview();
     isUpdating = false;
   }
 
@@ -1050,47 +1021,6 @@
     }
   }
 
-  // ── 2D Preview ──
-  function debouncedPreview(smiles) {
-    clearTimeout(previewDebounceTimer);
-    previewDebounceTimer = setTimeout(() => renderPreview(smiles), 300);
-  }
-
-  function renderPreview(smiles) {
-    if (!RDKit || !smiles) { hidePreview(); return; }
-    let mol = null;
-    try {
-      mol = RDKit.get_mol(smiles);
-      if (mol && mol.is_valid()) {
-        const svg = mol.get_svg_with_highlights(JSON.stringify({
-          width: 300, height: 220, bondLineWidth: 1.5, backgroundColour: [0, 0, 0, 0]
-        }));
-        previewSvg.innerHTML = fixSvgColors(svg);
-        previewCard.classList.add('visible');
-      } else {
-        hidePreview();
-      }
-    } catch (e) {
-      hidePreview();
-    } finally {
-      if (mol) mol.delete();
-    }
-  }
-
-  function hidePreview() {
-    previewCard.classList.remove('visible');
-    previewSvg.innerHTML = '<span class="preview-status">Draw a molecule to see 2D preview</span>';
-  }
-
-  function fixSvgColors(svg) {
-    const color = getComputedStyle(document.documentElement).getPropertyValue('--svg-bond').trim();
-    return svg
-      .replace(/fill:#000000/g, 'fill:' + color)
-      .replace(/stroke:#000000/g, 'stroke:' + color)
-      .replace(/fill='#000000'/g, "fill='" + color + "'")
-      .replace(/stroke='#000000'/g, "stroke='" + color + "'");
-  }
-
   // ── Initialize Ketcher ──
   function onKetcherReady() {
     const loadingScreen = document.getElementById('loading-screen');
@@ -1105,24 +1035,39 @@
 
     smilesInput.disabled = false;
     clearBtn.disabled = false;
+    loadEditorBtn.disabled = false;
+    getSmilesBtn.disabled = false;
 
-    smilesInput.addEventListener('input', onSmilesInput);
-    smilesInput.addEventListener('keydown', onSmilesKeydown);
+    // Enter key in textarea triggers "Load into Editor"
+    smilesInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        loadFromTextarea();
+      }
+    });
+
+    loadEditorBtn.addEventListener('click', loadFromTextarea);
+    getSmilesBtn.addEventListener('click', getSmilesFromEditor);
     copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
     sendBtn.addEventListener('click', sendToConverter);
     clearBtn.addEventListener('click', clearEditor);
 
+    // Ensure iframe gets keyboard focus when clicked
+    document.getElementById('editor-container').addEventListener('click', () => {
+      ketcherFrame.focus();
+    });
+
     initExportToolbar();
     renderTemplateChips();
     loadFromUrl();
+
+    // Give Ketcher iframe initial focus for keyboard input
+    setTimeout(() => ketcherFrame.focus(), 500);
   }
 
   ketcherBridge = new KetcherBridge(ketcherFrame, {
     onReady: () => {
       onKetcherReady();
-    },
-    onSmilesChange: (smiles) => {
-      onEditorChange(smiles);
     },
     onError: (msg) => {
       const loadingScreen = document.getElementById('loading-screen');
@@ -1143,16 +1088,14 @@
     if (smiles) loadSmiles(smiles);
   }
 
-  // ── RDKit for 2D preview (non-blocking) ──
+  // ── RDKit for export format conversions (non-blocking) ──
   if (typeof initRDKitModule === 'function') {
     initRDKitModule({
       locateFile: () => 'https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.wasm'
     }).then(mod => {
       RDKit = mod;
-      const current = currentSmiles || smilesInput.value.trim();
-      if (current) renderPreview(current);
     }).catch(e => {
-      console.warn('RDKit failed to load (2D preview unavailable):', e);
+      console.warn('RDKit failed to load (export conversions unavailable):', e);
     });
   }
 
@@ -1171,8 +1114,6 @@
     const next = current === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('smiles-theme', next);
-    const smiles = currentSmiles || smilesInput.value.trim();
-    if (smiles && RDKit) renderPreview(smiles);
   });
 </script>
 </body>

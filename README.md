@@ -31,6 +31,7 @@ Interactive molecular structure editor powered by [Ketcher](https://github.com/e
 
 - **Full-featured structure editor** — Draw atoms, bonds, rings, functional groups, reactions, and stereochemistry using Ketcher's professional toolbar
 - **Two-way SMILES binding** — Draw a structure to generate SMILES, or type/paste SMILES to render a structure
+- **Multi-format export** — Export as SMILES, Molfile, InChI, or InChIKey (via RDKit.js); SMARTS/RXN/CDXML also available
 - **Multi-format export** — Export as SMILES, Molfile, InChI, or InChIKey (via RDKit.js); SMARTS/RXN/CDXML available when self-hosted
 - **Template molecules** — Quick-insert common molecules (benzene, caffeine, aspirin, etc.)
 - **2D preview** — RDKit-powered canonical SVG rendering for verification
@@ -67,6 +68,7 @@ Full-featured SMILES analysis tool powered by [RDKit.js](https://github.com/rdki
 | Library | Version | Purpose |
 |---------|---------|---------|
 | [RDKit.js](https://www.rdkit.org/) | 2025.3.4 | SMILES parsing, formula calculation, 2D SVG, format conversion |
+| [Ketcher](https://github.com/epam/ketcher) | 3.2.0 | Structure editor (self-hosted build in `ketcher/`) |
 | [Ketcher](https://github.com/epam/ketcher) | 3.2.0 | Structure editor (iframe, hosted at `ketcher.mireklzicar.com`) |
 | [3Dmol.js](https://3dmol.csb.pitt.edu/) | 2.5.3 | Interactive 3D molecular viewer |
 | [Google Fonts](https://fonts.google.com/) | — | IBM Plex Mono, DM Sans |
@@ -92,6 +94,7 @@ Then change the iframe `src` in `molecule_drawing.html` to `http://localhost:808
 ChemEditor-v1.0/
 ├── molecule_drawing.html    # Molecule Editor (single-file app)
 ├── smiles_to_formula.html   # Formula Converter (single-file app)
+├── ketcher/                 # Ketcher 3.2.0 build (self-hosted, loaded via iframe)
 ├── CLAUDE.md                # Development instructions for Claude Code
 ├── .gitignore
 └── README.md

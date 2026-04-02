@@ -241,13 +241,15 @@
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: #fff;
   }
 
-  #editor-container canvas {
-    display: block;
+  #ketcher-frame {
     width: 100%;
     height: 100%;
+    border: none;
+    border-radius: 8px;
+    background: #fff;
   }
 
   /* -- SMILES I/O card -- */
@@ -277,6 +279,8 @@
     overflow-wrap: break-word;
     word-break: break-all;
     min-height: 3.5rem;
+    max-height: 200px;
+    overflow-y: auto;
     line-height: 1.4;
     field-sizing: content;
   }
@@ -357,28 +361,6 @@
   }
   .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* -- 2D Preview card -- */
-  .preview-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
-    display: none;
-  }
-
-  .preview-card.visible { display: block; }
-
-  .preview-card .preview-status {
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-  }
-
-  #preview-svg svg {
-    max-width: 100%;
-    height: auto;
-  }
 
   /* -- Template chips -- */
   .templates-section {
@@ -429,58 +411,25 @@
     background: var(--accent-glow);
   }
 
-  /* -- Hotkey cheat sheet (commented out — re-enable with HTML below)
-  .hotkeys-card {
+  /* -- Export toolbar -- */
+  .export-toolbar {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 1.25rem;
-    margin-top: 1rem;
+    padding: 1rem 1.25rem;
   }
-  .hotkeys-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 0.2rem 1.5rem;
-  }
-  .hotkeys-group-title {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--accent);
-    font-weight: 600;
-    margin-top: 0.5rem;
-    margin-bottom: 0.25rem;
-    grid-column: 1 / -1;
-  }
-  .hotkeys-group-title:first-child { margin-top: 0; }
-  .hotkey-row {
+
+  .export-buttons {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.2rem 0;
-    font-size: 0.78rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
   }
-  kbd {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    height: 22px;
-    padding: 0 0.4rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--text);
-    white-space: nowrap;
+
+  .export-chip.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
   }
-  .hotkey-row .hotkey-desc {
-    color: var(--text-dim);
-    font-size: 0.75rem;
-  }
-  -- */
 
   /* -- Theme toggle -- */
   .theme-toggle {
@@ -538,7 +487,7 @@
 <div id="loading-screen">
   <div class="ls-spinner"></div>
   <div class="ls-title">Molecule <span class="arrow">Editor</span></div>
-  <div class="ls-sub">Loading OpenChemLib...</div>
+  <div class="ls-sub">Loading Ketcher editor...</div>
 </div>
 
 <div class="container">
@@ -548,13 +497,13 @@
       <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
     <h1>Molecule <span class="arrow">Editor</span></h1>
-    <p>Draw molecular structures and generate SMILES</p>
+    <p>Draw structures, reactions, and generate SMILES</p>
     <a class="nav-link" href="smiles_to_formula.html">Formula Converter &rarr;</a>
   </div>
 
   <div class="loading-banner" id="status-banner">
     <div class="spinner" id="status-spinner"></div>
-    <span id="status-text">Loading OpenChemLib editor module...</span>
+    <span id="status-text">Loading Ketcher editor...</span>
   </div>
 
   <!-- Side-by-side: Left = SMILES I/O, Right = Editor -->
@@ -563,15 +512,18 @@
     <div class="left-col">
       <!-- SMILES input/output -->
       <div class="smiles-io-card">
-        <div class="section-label">SMILES</div>
+        <div class="section-label" id="io-label">SMILES</div>
         <div class="smiles-input-wrap">
           <textarea id="smiles-input" placeholder="Draw or type SMILES..." disabled autocomplete="off" spellcheck="false" rows="2"></textarea>
         </div>
         <div class="smiles-error" id="smiles-error">Invalid SMILES string</div>
         <div class="action-col">
-          <button class="btn" id="copy-btn" disabled data-copy="">
+          <button class="btn" id="convert-btn" disabled>
+            Convert
+          </button>
+          <button class="btn-secondary" id="copy-btn" disabled data-copy="">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy SMILES
+            Copy
           </button>
           <button class="btn-secondary" id="send-btn" disabled>
             Analyze in Formula Converter &rarr;
@@ -590,88 +542,120 @@
         </div>
       </div>
 
-      <!-- 2D preview via RDKit -->
-      <div class="preview-card" id="preview-card">
-        <div class="section-label">2D Preview (RDKit)</div>
-        <div id="preview-svg">
-          <span class="preview-status">Loading RDKit for 2D preview...</span>
-        </div>
-      </div>
     </div>
 
     <!-- Right column -->
     <div class="right-col">
+      <!-- Export format toolbar -->
+      <div class="export-toolbar">
+        <div class="section-label">Export Format</div>
+        <div class="export-buttons">
+          <button class="chip export-chip active" data-format="smiles">SMILES</button>
+          <button class="chip export-chip" data-format="molfile">Molfile</button>
+          <button class="chip export-chip" data-format="inchi">InChI</button>
+          <button class="chip export-chip" data-format="inchikey">InChIKey</button>
+          <button class="chip export-chip" data-format="smarts">SMARTS</button>
+          <button class="chip export-chip" data-format="rxn">RXN</button>
+          <button class="chip export-chip" data-format="cdxml">CDXML</button>
+        </div>
+      </div>
+
       <div class="editor-card">
         <div class="section-label">Structure Editor</div>
-        <div id="editor-container"></div>
+        <!-- Ketcher standalone build (EPAM, Apache 2.0) served from same origin.
+             Built from https://github.com/epam/ketcher — see ketcher/ directory. -->
+        <div id="editor-container">
+          <iframe
+            id="ketcher-frame"
+            src="ketcher/index.html"
+            title="Ketcher Chemical Structure Editor"
+            sandbox="allow-scripts allow-same-origin"
+            allow="clipboard-read; clipboard-write"
+            tabindex="0"
+          ></iframe>
+        </div>
       </div>
     </div>
   </div>
-
-  <!-- Hotkey cheat sheet (commented out for now)
-  <div class="hotkeys-card">
-    <div class="section-label">Keyboard Shortcuts</div>
-    <div class="hotkeys-grid">
-      <div class="hotkeys-group-title">Bonds</div>
-      <div class="hotkey-row"><kbd>1</kbd> <span class="hotkey-desc">Single bond</span></div>
-      <div class="hotkey-row"><kbd>2</kbd> <span class="hotkey-desc">Chain tool</span></div>
-      <div class="hotkey-row"><kbd>U</kbd> <span class="hotkey-desc">Up wedge bond</span></div>
-      <div class="hotkey-row"><kbd>D</kbd> <span class="hotkey-desc">Down dash bond</span></div>
-
-      <div class="hotkeys-group-title">Rings</div>
-      <div class="hotkey-row"><kbd>3</kbd> <span class="hotkey-desc">3-membered ring</span></div>
-      <div class="hotkey-row"><kbd>4</kbd> <span class="hotkey-desc">4-membered ring</span></div>
-      <div class="hotkey-row"><kbd>5</kbd> <span class="hotkey-desc">5-membered ring</span></div>
-      <div class="hotkey-row"><kbd>6</kbd> <span class="hotkey-desc">6-membered ring</span></div>
-      <div class="hotkey-row"><kbd>7</kbd> <span class="hotkey-desc">7-membered ring</span></div>
-      <div class="hotkey-row"><kbd>A</kbd> <span class="hotkey-desc">Aromatic ring</span></div>
-
-      <div class="hotkeys-group-title">Atoms</div>
-      <div class="hotkey-row"><kbd>C</kbd> <span class="hotkey-desc">Carbon</span></div>
-      <div class="hotkey-row"><kbd>N</kbd> <span class="hotkey-desc">Nitrogen</span></div>
-      <div class="hotkey-row"><kbd>O</kbd> <span class="hotkey-desc">Oxygen</span></div>
-      <div class="hotkey-row"><kbd>S</kbd> <span class="hotkey-desc">Sulfur</span></div>
-      <div class="hotkey-row"><kbd>P</kbd> <span class="hotkey-desc">Phosphorus</span></div>
-      <div class="hotkey-row"><kbd>F</kbd> <span class="hotkey-desc">Fluorine</span></div>
-      <div class="hotkey-row"><kbd>L</kbd> <span class="hotkey-desc">Chlorine</span></div>
-      <div class="hotkey-row"><kbd>B</kbd> <span class="hotkey-desc">Bromine</span></div>
-      <div class="hotkey-row"><kbd>I</kbd> <span class="hotkey-desc">Iodine</span></div>
-      <div class="hotkey-row"><kbd>H</kbd> <span class="hotkey-desc">Hydrogen</span></div>
-
-      <div class="hotkeys-group-title">Modifiers &amp; Tools</div>
-      <div class="hotkey-row"><kbd>+</kbd> <span class="hotkey-desc">Positive charge</span></div>
-      <div class="hotkey-row"><kbd>-</kbd> <span class="hotkey-desc">Negative charge</span></div>
-      <div class="hotkey-row"><kbd>0</kbd> <span class="hotkey-desc">Delete tool</span></div>
-      <div class="hotkey-row"><kbd>Z</kbd> <span class="hotkey-desc">Zoom tool</span></div>
-      <div class="hotkey-row"><kbd>Space</kbd> <span class="hotkey-desc">Lasso / selection</span></div>
-
-      <div class="hotkeys-group-title">General</div>
-      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd> <span class="hotkey-desc">Undo</span></div>
-      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>C</kbd> <span class="hotkey-desc">Copy</span></div>
-      <div class="hotkey-row"><kbd>Ctrl</kbd>+<kbd>V</kbd> <span class="hotkey-desc">Paste</span></div>
-      <div class="hotkey-row"><kbd>Del</kbd> <span class="hotkey-desc">Delete selected</span></div>
-    </div>
-  </div>
-  -->
 </div>
 
-<!-- RDKit.js for optional 2D preview -->
+<!-- RDKit.js for export format conversions -->
 <script src="https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.js"></script>
 
-<!-- OpenChemLib full build (includes CanvasEditor) -->
-<script type="module">
-  import OCL from 'https://cdn.jsdelivr.net/npm/openchemlib@8.18.1/full.js/+esm';
-  window.OCL = OCL;
-  window.dispatchEvent(new Event('ocl-full-ready'));
-</script>
-
 <script>
+  // ── KetcherBridge — same-origin direct API access ──
+  // Ketcher (EPAM) is served from the same origin via ketcher/index.html.
+  // It sends { eventType: 'init' } via postMessage when ready, then exposes
+  // iframe.contentWindow.ketcher with the full Ketcher API.
+  class KetcherBridge {
+    constructor(iframeElement, options = {}) {
+      this.iframe = iframeElement;
+      this.onReady = options.onReady || (() => {});
+      this.readyTimeout = options.readyTimeout || 30000;
+      this._ketcher = null;
+      this._ready = false;
+
+      // Listen for Ketcher's init event (uses eventType, not type)
+      this._messageHandler = (event) => {
+        if (event.data && event.data.eventType === 'init') {
+          this._ready = true;
+          clearTimeout(this._readyTimer);
+          // Access the Ketcher API directly (same-origin)
+          this._ketcher = this.iframe.contentWindow.ketcher;
+          this.onReady();
+        }
+      };
+      window.addEventListener('message', this._messageHandler);
+
+      this._readyTimer = setTimeout(() => {
+        if (!this._ready) {
+          if (options.onError) {
+            options.onError('Could not load Ketcher editor. Check your internet connection.');
+          }
+        }
+      }, this.readyTimeout);
+    }
+
+    async getSmiles() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      return await this._ketcher.getSmiles();
+    }
+
+    async setMolecule(structureString) {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      await this._ketcher.setMolecule(structureString);
+    }
+
+    async clear() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      // Ketcher API: setMolecule with empty string clears the canvas
+      await this._ketcher.setMolecule('');
+    }
+
+    // Inject CSS into the same-origin Ketcher iframe
+    injectCSS(css) {
+      try {
+        const doc = this.iframe.contentDocument || this.iframe.contentWindow.document;
+        const style = doc.createElement('style');
+        style.textContent = css;
+        doc.head.appendChild(style);
+      } catch (e) {
+        console.warn('Could not inject CSS into Ketcher iframe:', e);
+      }
+    }
+
+    destroy() {
+      window.removeEventListener('message', this._messageHandler);
+      clearTimeout(this._readyTimer);
+    }
+  }
+
   // ── Globals ──
-  let editor = null;
+  let ketcherBridge = null;
+  let activeExportFormat = 'smiles';
+  let currentSmiles = '';
   let RDKit = null;
   let isUpdating = false;
-  let previewDebounceTimer = null;
-  let smilesDebounceTimer = null;
 
   // ── DOM refs ──
   const smilesInput     = document.getElementById('smiles-input');
@@ -679,12 +663,12 @@
   const copyBtn         = document.getElementById('copy-btn');
   const sendBtn         = document.getElementById('send-btn');
   const clearBtn        = document.getElementById('clear-btn');
+  const convertBtn      = document.getElementById('convert-btn');
   const statusBanner    = document.getElementById('status-banner');
   const statusSpinner   = document.getElementById('status-spinner');
   const statusText      = document.getElementById('status-text');
-  const previewCard     = document.getElementById('preview-card');
-  const previewSvg      = document.getElementById('preview-svg');
-  const editorContainer = document.getElementById('editor-container');
+  const ketcherFrame    = document.getElementById('ketcher-frame');
+  const ioLabel         = document.getElementById('io-label');
 
   // ── Template molecules ──
   const TEMPLATES = [
@@ -737,21 +721,22 @@
     bar.appendChild(shuffleBtn);
   }
 
-  // ── Load SMILES into editor (shared helper) ──
-  function loadSmiles(smiles) {
-    if (!editor || !window.OCL || !smiles) return false;
+  // ── Load SMILES into editor (clears first, then sets) ──
+  async function loadSmiles(smiles) {
+    if (!ketcherBridge || !smiles) return false;
     try {
       isUpdating = true;
-      const mol = window.OCL.Molecule.fromSmiles(smiles);
-      mol.inventCoordinates();
-      editor.setMolecule(mol);
-      const canonical = mol.toIsomericSmiles();
-      smilesInput.value = canonical;
-      updateCopyData(canonical);
+      await ketcherBridge.setMolecule(smiles);
+      currentSmiles = smiles;
+      if (activeExportFormat === 'smiles') {
+        smilesInput.value = smiles;
+        updateCopyData(smiles);
+      } else {
+        refreshExport();
+      }
       clearSmilesError();
       smilesInput.classList.remove('invalid');
       smilesInput.classList.add('valid');
-      debouncedPreview(canonical);
       return true;
     } catch (e) {
       console.error('Failed to load SMILES:', smiles, e);
@@ -761,11 +746,47 @@
     }
   }
 
+  // ── Convert: if textarea has SMILES → load into editor; if empty → get from editor ──
+  async function convert() {
+    if (isUpdating || !ketcherBridge) return;
+    const smiles = smilesInput.value.trim();
+    if (smiles) {
+      // Push textarea SMILES into editor
+      const success = await loadSmiles(smiles);
+      if (!success) {
+        showSmilesError('Invalid SMILES string');
+        updateCopyData('');
+      }
+    } else {
+      // Pull SMILES from editor into textarea
+      try {
+        const editorSmiles = await ketcherBridge.getSmiles();
+        currentSmiles = editorSmiles || '';
+        if (activeExportFormat === 'smiles') {
+          smilesInput.value = currentSmiles;
+          updateCopyData(currentSmiles);
+        } else {
+          refreshExport();
+        }
+        clearSmilesError();
+        if (currentSmiles) {
+          smilesInput.classList.add('valid');
+          smilesInput.classList.remove('invalid');
+        } else {
+          smilesInput.classList.remove('valid', 'invalid');
+        }
+      } catch (e) {
+        console.error('Failed to get SMILES:', e);
+        showSmilesError('Could not read SMILES from editor');
+      }
+    }
+  }
+
   // ── Update copy button data ──
-  function updateCopyData(smiles) {
-    copyBtn.setAttribute('data-copy', smiles || '');
-    copyBtn.disabled = !smiles;
-    sendBtn.disabled = !smiles;
+  function updateCopyData(text) {
+    copyBtn.setAttribute('data-copy', text || '');
+    copyBtn.disabled = !text;
+    sendBtn.disabled = !currentSmiles;
   }
 
   // ── SMILES error display ──
@@ -781,59 +802,6 @@
     smilesInput.classList.remove('invalid');
   }
 
-  // ── Structure -> SMILES ──
-  function onEditorChange(eventType, isUserEvent) {
-    if (isUpdating) return;
-    isUpdating = true;
-    try {
-      const mol = editor.getMolecule();
-      const smiles = mol.toIsomericSmiles();
-      smilesInput.value = smiles;
-      updateCopyData(smiles);
-      clearSmilesError();
-      if (smiles) {
-        smilesInput.classList.add('valid');
-        debouncedPreview(smiles);
-      } else {
-        smilesInput.classList.remove('valid');
-        hidePreview();
-      }
-    } catch (e) {
-      console.error('Editor change error:', e);
-    } finally {
-      isUpdating = false;
-    }
-  }
-
-  // ── SMILES -> Structure ──
-  function onSmilesInput() {
-    if (isUpdating) return;
-    clearTimeout(smilesDebounceTimer);
-    smilesDebounceTimer = setTimeout(() => applySmilesFromInput(), 500);
-  }
-
-  function onSmilesKeydown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      clearTimeout(smilesDebounceTimer);
-      applySmilesFromInput();
-    }
-  }
-
-  function applySmilesFromInput() {
-    if (isUpdating || !editor || !window.OCL) return;
-    const smiles = smilesInput.value.trim();
-    if (!smiles) {
-      clearEditor();
-      return;
-    }
-    if (!loadSmiles(smiles)) {
-      showSmilesError('Invalid SMILES string');
-      updateCopyData('');
-      hidePreview();
-    }
-  }
-
   // ── Copy to clipboard ──
   function copyToClipboard(btn) {
     const text = btn.getAttribute('data-copy');
@@ -847,154 +815,228 @@
     });
   }
 
-  // ── Send to formula converter ──
+  // ── Send to formula converter (always uses SMILES) ──
   function sendToConverter() {
-    const smiles = smilesInput.value.trim();
-    if (!smiles) return;
-    window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(smiles), '_blank');
+    if (!currentSmiles) return;
+    window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(currentSmiles), '_blank');
   }
 
   // ── Clear editor ──
-  function clearEditor() {
-    if (!editor) return;
+  async function clearEditor() {
+    if (!ketcherBridge) return;
     isUpdating = true;
-    editor.clearAll();
+    try {
+      await ketcherBridge.clear();
+    } catch (e) {
+      console.error('Clear failed:', e);
+    }
+    currentSmiles = '';
     smilesInput.value = '';
     updateCopyData('');
     clearSmilesError();
     smilesInput.classList.remove('valid', 'invalid');
-    hidePreview();
     isUpdating = false;
   }
 
-  // ── 2D Preview ──
-  function debouncedPreview(smiles) {
-    clearTimeout(previewDebounceTimer);
-    previewDebounceTimer = setTimeout(() => renderPreview(smiles), 300);
-  }
-
-  function renderPreview(smiles) {
-    if (!RDKit || !smiles) { hidePreview(); return; }
-    let mol = null;
-    try {
-      mol = RDKit.get_mol(smiles);
-      if (mol && mol.is_valid()) {
-        const svg = mol.get_svg_with_highlights(JSON.stringify({
-          width: 300, height: 220, bondLineWidth: 1.5, backgroundColour: [0, 0, 0, 0]
-        }));
-        previewSvg.innerHTML = fixSvgColors(svg);
-        previewCard.classList.add('visible');
-      } else {
-        hidePreview();
-      }
-    } catch (e) {
-      hidePreview();
-    } finally {
-      if (mol) mol.delete();
-    }
-  }
-
-  function hidePreview() {
-    previewCard.classList.remove('visible');
-    previewSvg.innerHTML = '<span class="preview-status">Draw a molecule to see 2D preview</span>';
-  }
-
-  function fixSvgColors(svg) {
-    const color = getComputedStyle(document.documentElement).getPropertyValue('--svg-bond').trim();
-    return svg
-      .replace(/fill:#000000/g, 'fill:' + color)
-      .replace(/stroke:#000000/g, 'stroke:' + color)
-      .replace(/fill='#000000'/g, "fill='" + color + "'")
-      .replace(/stroke='#000000'/g, "stroke='" + color + "'");
-  }
-
-  // ── Initialize editor ──
-  function initEditor() {
-    if (!window.OCL || !window.OCL.CanvasEditor) {
-      statusBanner.classList.add('error');
-      statusSpinner.style.display = 'none';
-      statusText.textContent = 'Error: CanvasEditor not available in this build';
-      return false;
-    }
-
-    try {
-      editor = new window.OCL.CanvasEditor(editorContainer, {
-        initialMode: 'molecule'
+  // ── Export format toolbar ──
+  function initExportToolbar() {
+    const chips = document.querySelectorAll('.export-chip');
+    chips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        activeExportFormat = chip.dataset.format;
+        updateExportLabel();
+        refreshExport();
       });
+    });
+  }
 
-      editor.setOnChangeListener(onEditorChange);
+  function updateExportLabel() {
+    const labelMap = {
+      smiles: 'SMILES',
+      molfile: 'Molfile',
+      inchi: 'InChI',
+      inchikey: 'InChIKey',
+      smarts: 'SMARTS',
+      rxn: 'RXN',
+      cdxml: 'CDXML'
+    };
+    ioLabel.textContent = labelMap[activeExportFormat] || 'SMILES';
+  }
 
-      smilesInput.disabled = false;
-      clearBtn.disabled = false;
+  async function refreshExport() {
+    if (!currentSmiles && activeExportFormat !== 'smiles') {
+      return;
+    }
 
-      smilesInput.addEventListener('input', onSmilesInput);
-      smilesInput.addEventListener('keydown', onSmilesKeydown);
-      copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
-      sendBtn.addEventListener('click', sendToConverter);
-      clearBtn.addEventListener('click', clearEditor);
-
-      statusBanner.classList.add('ready');
-      statusSpinner.outerHTML = '<div class="dot"></div>';
-      statusText.textContent = 'Editor ready — draw a molecule or type SMILES';
-
-      return true;
-    } catch (e) {
-      console.error('Failed to initialize CanvasEditor:', e);
-      statusBanner.classList.add('error');
-      statusSpinner.style.display = 'none';
-      statusText.textContent = 'Error initializing editor: ' + e.message;
-      return false;
+    switch (activeExportFormat) {
+      case 'smiles':
+        smilesInput.value = currentSmiles;
+        updateCopyData(currentSmiles);
+        break;
+      case 'molfile':
+        if (RDKit) {
+          const mol = RDKit.get_mol(currentSmiles);
+          if (mol && mol.is_valid()) {
+            const molblock = mol.get_molblock();
+            smilesInput.value = molblock;
+            updateCopyData(molblock);
+            mol.delete();
+          }
+        } else {
+          smilesInput.value = 'Loading RDKit...';
+          updateCopyData('');
+        }
+        break;
+      case 'inchi':
+        if (RDKit) {
+          const mol2 = RDKit.get_mol(currentSmiles);
+          if (mol2 && mol2.is_valid()) {
+            const inchi = mol2.get_inchi();
+            smilesInput.value = inchi;
+            updateCopyData(inchi);
+            mol2.delete();
+          }
+        } else {
+          smilesInput.value = 'Loading RDKit...';
+          updateCopyData('');
+        }
+        break;
+      case 'inchikey':
+        if (RDKit) {
+          const mol3 = RDKit.get_mol(currentSmiles);
+          if (mol3 && mol3.is_valid()) {
+            const inchi3 = mol3.get_inchi();
+            try {
+              const key = RDKit.get_inchikey_for_inchi(inchi3);
+              smilesInput.value = key;
+              updateCopyData(key);
+            } catch {
+              smilesInput.value = 'InChIKey generation not available';
+              updateCopyData('');
+            }
+            mol3.delete();
+          }
+        } else {
+          smilesInput.value = 'Loading RDKit...';
+          updateCopyData('');
+        }
+        break;
+      case 'smarts':
+        try {
+          const smarts = await ketcherBridge._ketcher.getSmarts();
+          smilesInput.value = smarts;
+          updateCopyData(smarts);
+        } catch (e) {
+          smilesInput.value = 'SMARTS export failed: ' + e.message;
+          updateCopyData('');
+        }
+        break;
+      case 'rxn':
+        try {
+          const rxn = await ketcherBridge._ketcher.getRxn();
+          smilesInput.value = rxn;
+          updateCopyData(rxn);
+        } catch (e) {
+          smilesInput.value = 'RXN export failed: ' + e.message;
+          updateCopyData('');
+        }
+        break;
+      case 'cdxml':
+        try {
+          const cdxml = await ketcherBridge._ketcher.getCDXml();
+          smilesInput.value = cdxml;
+          updateCopyData(cdxml);
+        } catch (e) {
+          smilesInput.value = 'CDXML export failed: ' + e.message;
+          updateCopyData('');
+        }
+        break;
     }
   }
+
+  // ── Initialize Ketcher ──
+  function onKetcherReady() {
+    // Hide 3D viewer and fullscreen buttons via CSS injection (same-origin)
+    ketcherBridge.injectCSS(`
+      [data-testid="3D Viewer button"],
+      [data-testid="fullscreen-mode-button"] {
+        display: none !important;
+      }
+    `);
+
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('fade-out');
+      setTimeout(() => loadingScreen.remove(), 500);
+    }
+
+    statusBanner.classList.add('ready');
+    statusSpinner.outerHTML = '<div class="dot"></div>';
+    statusText.textContent = 'Editor ready \u2014 draw a molecule or type SMILES';
+
+    smilesInput.disabled = false;
+    clearBtn.disabled = false;
+    convertBtn.disabled = false;
+
+    // Enter key in textarea triggers convert
+    smilesInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        convert();
+      }
+    });
+
+    convertBtn.addEventListener('click', convert);
+    copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
+    sendBtn.addEventListener('click', sendToConverter);
+    clearBtn.addEventListener('click', clearEditor);
+
+    // Ensure iframe gets keyboard focus when clicked
+    document.getElementById('editor-container').addEventListener('click', () => {
+      ketcherFrame.focus();
+    });
+
+    initExportToolbar();
+    renderTemplateChips();
+    loadFromUrl();
+
+    // Give Ketcher iframe initial focus for keyboard input
+    setTimeout(() => ketcherFrame.focus(), 500);
+  }
+
+  ketcherBridge = new KetcherBridge(ketcherFrame, {
+    onReady: () => {
+      onKetcherReady();
+    },
+    onError: (msg) => {
+      const loadingScreen = document.getElementById('loading-screen');
+      if (loadingScreen) {
+        loadingScreen.classList.add('fade-out');
+        setTimeout(() => loadingScreen.remove(), 500);
+      }
+      statusBanner.classList.add('error');
+      statusSpinner.style.display = 'none';
+      statusText.textContent = msg;
+    },
+    readyTimeout: 30000
+  });
 
   // ── Load from URL param ──
   function loadFromUrl() {
     const smiles = new URLSearchParams(window.location.search).get('smiles');
-    if (smiles) loadSmiles(smiles); // URLSearchParams.get() already decodes
+    if (smiles) loadSmiles(smiles);
   }
 
-  // ── Wait for OpenChemLib ──
-  let oclTimeout = null;
-
-  function onOclReady() {
-    clearTimeout(oclTimeout);
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.classList.add('fade-out');
-      setTimeout(() => loadingScreen.remove(), 500);
-    }
-
-    const success = initEditor();
-    if (success) {
-      renderTemplateChips();
-      loadFromUrl();
-    }
-  }
-
-  window.addEventListener('ocl-full-ready', onOclReady, { once: true });
-
-  oclTimeout = setTimeout(() => {
-    window.removeEventListener('ocl-full-ready', onOclReady);
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.classList.add('fade-out');
-      setTimeout(() => loadingScreen.remove(), 500);
-    }
-    statusBanner.classList.add('error');
-    statusSpinner.style.display = 'none';
-    statusText.textContent = 'Timed out loading OpenChemLib. Please refresh the page.';
-  }, 20000);
-
-  // ── RDKit for 2D preview (non-blocking) ──
+  // ── RDKit for export format conversions (non-blocking) ──
   if (typeof initRDKitModule === 'function') {
     initRDKitModule({
       locateFile: () => 'https://unpkg.com/@rdkit/rdkit@2025.3.4-1.0.0/dist/RDKit_minimal.wasm'
     }).then(mod => {
       RDKit = mod;
-      const current = smilesInput.value.trim();
-      if (current) renderPreview(current);
     }).catch(e => {
-      console.warn('RDKit failed to load (2D preview unavailable):', e);
+      console.warn('RDKit failed to load (export conversions unavailable):', e);
     });
   }
 
@@ -1013,8 +1055,6 @@
     const next = current === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('smiles-theme', next);
-    const smiles = smilesInput.value.trim();
-    if (smiles && RDKit) renderPreview(smiles);
   });
 </script>
 </body>

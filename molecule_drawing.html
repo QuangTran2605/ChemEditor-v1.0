@@ -844,22 +844,12 @@
     window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(currentSmiles), '_blank');
   }
 
-  // ── Clear editor ──
-  async function clearEditor() {
-    if (!ketcherBridge) return;
-    isUpdating = true;
-    try {
-      await ketcherBridge.clear();
-    } catch (e) {
-      console.error('Clear failed:', e);
-    } finally {
-      currentSmiles = '';
-      smilesInput.value = '';
-      updateCopyData('');
-      clearSmilesError();
-      smilesInput.classList.remove('valid', 'invalid');
-      isUpdating = false;
-    }
+  // ── Clear SMILES input ──
+  function clearInput() {
+    smilesInput.value = '';
+    updateCopyData('');
+    clearSmilesError();
+    smilesInput.classList.remove('valid', 'invalid');
   }
 
   // ── RDKit mol helper — always cleans up, even on invalid SMILES ──
@@ -1009,7 +999,7 @@
     convertBtn.addEventListener('click', convert);
     copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
     sendBtn.addEventListener('click', sendToConverter);
-    clearBtn.addEventListener('click', clearEditor);
+    clearBtn.addEventListener('click', clearInput);
 
     // Ensure iframe gets keyboard focus when clicked
     document.getElementById('editor-container').addEventListener('click', () => {

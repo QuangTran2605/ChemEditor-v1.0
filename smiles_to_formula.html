@@ -2069,11 +2069,26 @@
       if (yMax === 0) yMax = 1;
       const scale = intensityScale * 0.9;
 
+      // Adaptive tick step: pick a "nice" interval so ~6-12 major ticks fit the view
+      function niceTickStep(range, maxTicks) {
+        const rough = range / maxTicks;
+        const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+        const norm = rough / mag;
+        let nice;
+        if (norm <= 1.5) nice = 1;
+        else if (norm <= 3.5) nice = 2;
+        else if (norm <= 7.5) nice = 5;
+        else nice = 10;
+        return nice * mag;
+      }
+      const targetTicks = Math.max(4, Math.min(10, Math.floor(pw / 70)));
+      const tickStep = niceTickStep(viewMax - viewMin, targetTicks);
+      const gridStep = tickStep;
+
       // Grid lines
       ctx.strokeStyle = c.border;
       ctx.globalAlpha = 0.3;
       ctx.lineWidth = 0.5;
-      const gridStep = (viewMax - viewMin) > 8 ? 1 : (viewMax - viewMin) > 3 ? 0.5 : 0.25;
       for (let ppm = Math.ceil(viewMin / gridStep) * gridStep; ppm <= viewMax; ppm += gridStep) {
         const x = ppmToX(ppm);
         if (x < ML || x > ML + pw) continue;
@@ -2087,17 +2102,16 @@
       ctx.beginPath(); ctx.moveTo(ML, baseline); ctx.lineTo(ML + pw, baseline); ctx.stroke();
 
       // Ticks and labels
-      const tickStep = (viewMax - viewMin) > 8 ? 1 : (viewMax - viewMin) > 3 ? 0.5 : 0.25;
       ctx.font = '9px "IBM Plex Mono", monospace';
       ctx.fillStyle = c.textDim;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
+      const tickDecimals = tickStep < 0.5 ? 2 : tickStep < 1 ? 1 : 0;
       for (let ppm = Math.ceil(viewMin / tickStep) * tickStep; ppm <= viewMax; ppm += tickStep) {
         const x = ppmToX(ppm);
         if (x < ML - 5 || x > ML + pw + 5) continue;
         ctx.beginPath(); ctx.moveTo(x, baseline); ctx.lineTo(x, baseline + 5); ctx.stroke();
-        const label = tickStep < 1 ? ppm.toFixed(1) : ppm.toFixed(0);
-        ctx.fillText(label, x, baseline + 7);
+        ctx.fillText(ppm.toFixed(tickDecimals), x, baseline + 7);
       }
       // Sub-ticks
       const subStep = tickStep / 2;

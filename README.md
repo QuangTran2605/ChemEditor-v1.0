@@ -25,22 +25,24 @@ Then open:
 
 ## Molecule Editor (`molecule_drawing.html`)
 
-Interactive molecular structure editor powered by [OpenChemLib](https://github.com/cheminfo/openchemlib-js).
+Interactive molecular structure editor powered by [Ketcher](https://github.com/epam/ketcher) (EPAM, Apache 2.0) embedded via iframe.
 
 ### Features
 
-- **Visual structure editor** — Draw atoms, bonds, rings, and functional groups using the built-in toolbar
+- **Full-featured structure editor** — Draw atoms, bonds, rings, functional groups, reactions, and stereochemistry using Ketcher's professional toolbar
 - **Two-way SMILES binding** — Draw a structure to generate SMILES, or type/paste SMILES to render a structure
+- **Multi-format export** — Export as SMILES, Molfile, InChI, or InChIKey (via RDKit.js); SMARTS/RXN/CDXML available when self-hosted
 - **Template molecules** — Quick-insert common molecules (benzene, caffeine, aspirin, etc.)
 - **2D preview** — RDKit-powered canonical SVG rendering for verification
-- **Copy to clipboard** — One-click SMILES copy
+- **Copy to clipboard** — One-click copy of any export format
 - **Cross-link** — Send drawn molecules directly to the Formula Converter
 - **URL parameters** — Load molecules via `?smiles=CCO`
 - **Dark/light theme** — Synced with Formula Converter via localStorage
+- **Reaction support** — Draw full reaction schemes with Ketcher's native reaction tools
 
 ### Layout
 
-Side-by-side on desktop (SMILES output on left, editor canvas on right). Stacks vertically on mobile.
+Side-by-side on desktop (SMILES output on left, editor canvas on right). Export format toolbar above the editor. Stacks vertically on mobile.
 
 ## Formula Converter (`smiles_to_formula.html`)
 
@@ -64,12 +66,25 @@ Full-featured SMILES analysis tool powered by [RDKit.js](https://github.com/rdki
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| [RDKit.js](https://www.rdkit.org/) | 2025.3.4 | SMILES parsing, formula calculation, 2D SVG |
-| [OpenChemLib](https://github.com/cheminfo/openchemlib-js) | 8.18.1 | Structure editor (CanvasEditor), 3D conformer generation |
+| [RDKit.js](https://www.rdkit.org/) | 2025.3.4 | SMILES parsing, formula calculation, 2D SVG, format conversion |
+| [Ketcher](https://github.com/epam/ketcher) | 3.2.0 | Structure editor (iframe, hosted at `ketcher.mireklzicar.com`) |
 | [3Dmol.js](https://3dmol.csb.pitt.edu/) | 2.5.3 | Interactive 3D molecular viewer |
 | [Google Fonts](https://fonts.google.com/) | — | IBM Plex Mono, DM Sans |
 
 No npm packages. No build step. Zero runtime API dependencies.
+
+### Self-hosting Ketcher
+
+To self-host Ketcher instead of using the public instance:
+
+```bash
+git clone https://github.com/mireklzicar/ketcher-docker
+cd ketcher-docker
+docker build -t ketcher .
+docker run -p 8080:80 ketcher
+```
+
+Then change the iframe `src` in `molecule_drawing.html` to `http://localhost:8080`.
 
 ## Project Structure
 

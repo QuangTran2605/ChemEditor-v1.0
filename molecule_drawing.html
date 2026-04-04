@@ -1238,7 +1238,12 @@
 
       statusBanner.classList.add('ready');
       statusSpinner.outerHTML = '<div class="dot"></div>';
-      statusText.innerHTML = 'Editor ready &mdash; draw a molecule or type SMILES. New to this? Check out the <a href="#guide-toggle" style="color:inherit;text-decoration:underline;cursor:pointer" onclick="event.preventDefault();document.getElementById(\'guide-toggle\').scrollIntoView({behavior:\'smooth\'});toggleGuide()">short guide below</a>!';
+      statusText.innerHTML = 'Editor ready &mdash; draw a molecule or type SMILES. New to this? Check out the <a href="#guide-toggle" id="guide-link" style="color:inherit;text-decoration:underline;cursor:pointer">short guide below</a>!';
+      document.getElementById('guide-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('guide-toggle').scrollIntoView({ behavior: 'smooth' });
+        toggleGuide();
+      });
 
       return true;
     } catch (e) {

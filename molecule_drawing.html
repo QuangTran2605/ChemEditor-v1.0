@@ -237,11 +237,12 @@
 
   #editor-container {
     width: 100%;
-    height: 520px;
+    height: 600px;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
     background: #fff;
+    overscroll-behavior: contain;
   }
 
   #ketcher-frame {
@@ -310,6 +311,27 @@
     display: none;
   }
   .smiles-error.visible { display: block; }
+
+  .smiles-source-badge {
+    display: none;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    width: fit-content;
+  }
+  .smiles-source-badge.visible { display: inline-block; }
+  .smiles-source-badge.selection {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .smiles-source-badge.full-canvas {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid var(--green);
+  }
 
   .action-col {
     display: flex;
@@ -465,6 +487,89 @@
   :root .theme-toggle .icon-moon,
   [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
 
+  /* -- User guide dropdown -- */
+  .user-guide {
+    margin-top: 1.5rem;
+  }
+
+  .guide-toggle {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    font-weight: 600;
+    transition: border-color 0.2s;
+  }
+
+  .guide-toggle:hover { border-color: var(--accent); }
+
+  .guide-toggle .guide-chevron {
+    transition: transform 0.25s;
+    color: var(--text-dim);
+  }
+
+  .guide-toggle.open .guide-chevron { transform: rotate(180deg); }
+
+  .guide-content {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    padding: 1.25rem;
+    margin-top: -12px;
+    padding-top: calc(1.25rem + 12px);
+  }
+
+  .guide-content.open { display: block; }
+
+  .guide-group-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.4rem;
+  }
+  .guide-group-title:first-child { margin-top: 0; }
+
+  .guide-item {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.3rem 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .guide-item kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 22px;
+    padding: 0 0.4rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .guide-item .guide-desc { color: var(--text-dim); }
+
   /* -- Responsive -- */
   @media (max-width: 800px) {
     .main-grid {
@@ -472,11 +577,11 @@
     }
     .left-col { order: 2; }
     .right-col { order: 1; }
-    #editor-container { height: 400px; }
+    #editor-container { height: 460px; }
   }
 
   @media (max-width: 520px) {
-    #editor-container { height: 320px; }
+    #editor-container { height: 370px; }
     .action-col { flex-direction: column; }
     .header h1 { font-size: 1.3rem; }
   }
@@ -516,10 +621,14 @@
         <div class="smiles-input-wrap">
           <textarea id="smiles-input" placeholder="Draw or type SMILES..." disabled autocomplete="off" spellcheck="false" rows="2"></textarea>
         </div>
+        <div class="smiles-source-badge" id="smiles-source-badge"></div>
         <div class="smiles-error" id="smiles-error">Invalid SMILES string</div>
         <div class="action-col">
           <button class="btn" id="convert-btn" disabled>
             Convert
+          </button>
+          <button class="btn-secondary" id="get-selected-btn" disabled>
+            Get Selected
           </button>
           <button class="btn-secondary" id="copy-btn" disabled data-copy="">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -575,6 +684,80 @@
           ></iframe>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- User guide dropdown -->
+  <div class="user-guide">
+    <button class="guide-toggle" id="guide-toggle">
+      <span>Quick Guide — Toolbar Reference</span>
+      <svg class="guide-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="guide-content" id="guide-content">
+
+      <div class="guide-group-title">Top Toolbar</div>
+      <div class="guide-item"><kbd>Clear</kbd> <span class="guide-desc">Erase everything on the canvas and start fresh.</span></div>
+      <div class="guide-item"><kbd>Open</kbd> <span class="guide-desc">Open a molecule from a file (MOL, SDF, etc.).</span></div>
+      <div class="guide-item"><kbd>Save</kbd> <span class="guide-desc">Save the current structure to a file.</span></div>
+      <div class="guide-item"><kbd>Undo</kbd> <span class="guide-desc">Revert the last drawing action.</span></div>
+      <div class="guide-item"><kbd>Redo</kbd> <span class="guide-desc">Re-apply an undone action.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Selection &amp; View</div>
+      <div class="guide-item"><kbd>Hand</kbd> <span class="guide-desc">Pan the canvas by clicking and dragging.</span></div>
+      <div class="guide-item"><kbd>Lasso</kbd> <span class="guide-desc">Freeform selection — drag to select atoms and bonds.</span></div>
+      <div class="guide-item"><kbd>Rectangle</kbd> <span class="guide-desc">Rectangular selection — drag a box to select atoms and bonds.</span></div>
+      <div class="guide-item"><kbd>Fragment</kbd> <span class="guide-desc">Select an entire connected fragment with one click.</span></div>
+      <div class="guide-item"><kbd>Erase</kbd> <span class="guide-desc">Click atoms or bonds to delete them.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Bonds</div>
+      <div class="guide-item"><kbd>Single</kbd> <span class="guide-desc">Draw a single bond between atoms.</span></div>
+      <div class="guide-item"><kbd>Double</kbd> <span class="guide-desc">Draw a double bond between atoms.</span></div>
+      <div class="guide-item"><kbd>Triple</kbd> <span class="guide-desc">Draw a triple bond between atoms.</span></div>
+      <div class="guide-item"><kbd>Wedge</kbd> <span class="guide-desc">Wedge bond — indicates a bond pointing above the plane (stereochemistry).</span></div>
+      <div class="guide-item"><kbd>Dash</kbd> <span class="guide-desc">Dashed wedge bond — indicates a bond pointing below the plane.</span></div>
+      <div class="guide-item"><kbd>Chain</kbd> <span class="guide-desc">Draw a carbon chain by dragging.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Rings</div>
+      <div class="guide-item"><kbd>3</kbd> <span class="guide-desc">Insert a 3-membered ring (cyclopropane).</span></div>
+      <div class="guide-item"><kbd>4</kbd> <span class="guide-desc">Insert a 4-membered ring (cyclobutane).</span></div>
+      <div class="guide-item"><kbd>5</kbd> <span class="guide-desc">Insert a 5-membered ring (cyclopentane).</span></div>
+      <div class="guide-item"><kbd>6</kbd> <span class="guide-desc">Insert a 6-membered ring (cyclohexane).</span></div>
+      <div class="guide-item"><kbd>7</kbd> <span class="guide-desc">Insert a 7-membered ring (cycloheptane).</span></div>
+      <div class="guide-item"><kbd>8</kbd> <span class="guide-desc">Insert an 8-membered ring (cyclooctane).</span></div>
+      <div class="guide-item"><kbd>Benzene</kbd> <span class="guide-desc">Insert an aromatic benzene ring.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Atoms</div>
+      <div class="guide-item"><kbd>C</kbd> <span class="guide-desc">Set atom label to Carbon.</span></div>
+      <div class="guide-item"><kbd>N</kbd> <span class="guide-desc">Set atom label to Nitrogen.</span></div>
+      <div class="guide-item"><kbd>O</kbd> <span class="guide-desc">Set atom label to Oxygen.</span></div>
+      <div class="guide-item"><kbd>S</kbd> <span class="guide-desc">Set atom label to Sulfur.</span></div>
+      <div class="guide-item"><kbd>P</kbd> <span class="guide-desc">Set atom label to Phosphorus.</span></div>
+      <div class="guide-item"><kbd>F</kbd> <span class="guide-desc">Set atom label to Fluorine.</span></div>
+      <div class="guide-item"><kbd>Cl</kbd> <span class="guide-desc">Set atom label to Chlorine.</span></div>
+      <div class="guide-item"><kbd>Br</kbd> <span class="guide-desc">Set atom label to Bromine.</span></div>
+      <div class="guide-item"><kbd>I</kbd> <span class="guide-desc">Set atom label to Iodine.</span></div>
+      <div class="guide-item"><kbd>H</kbd> <span class="guide-desc">Set atom label to Hydrogen.</span></div>
+      <div class="guide-item"><kbd>Si</kbd> <span class="guide-desc">Set atom label to Silicon.</span></div>
+      <div class="guide-item"><kbd>?...</kbd> <span class="guide-desc">Open the periodic table to pick any element.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Charges &amp; Modifiers</div>
+      <div class="guide-item"><kbd>+</kbd> <span class="guide-desc">Add a positive charge to the clicked atom.</span></div>
+      <div class="guide-item"><kbd>-</kbd> <span class="guide-desc">Add a negative charge to the clicked atom.</span></div>
+
+      <div class="guide-group-title">Left Toolbar — Shapes &amp; Arrows</div>
+      <div class="guide-item"><kbd>Arrow</kbd> <span class="guide-desc">Draw a reaction arrow on the canvas.</span></div>
+      <div class="guide-item"><kbd>R-Group</kbd> <span class="guide-desc">Label atoms as R-group attachment points (R1, R2, etc.).</span></div>
+      <div class="guide-item"><kbd>S-Group</kbd> <span class="guide-desc">Group atoms into an S-group (abbreviation, polymer bracket, etc.).</span></div>
+      <div class="guide-item"><kbd>Text</kbd> <span class="guide-desc">Add a text annotation to the canvas.</span></div>
+
+      <div class="guide-group-title">General Shortcuts</div>
+      <div class="guide-item"><kbd>Ctrl+Z</kbd> <span class="guide-desc">Undo the last action.</span></div>
+      <div class="guide-item"><kbd>Ctrl+Y</kbd> <span class="guide-desc">Redo the last undone action.</span></div>
+      <div class="guide-item"><kbd>Ctrl+A</kbd> <span class="guide-desc">Select all atoms and bonds.</span></div>
+      <div class="guide-item"><kbd>Ctrl+C</kbd> <span class="guide-desc">Copy the selected structure.</span></div>
+      <div class="guide-item"><kbd>Ctrl+V</kbd> <span class="guide-desc">Paste a previously copied structure.</span></div>
+      <div class="guide-item"><kbd>Del</kbd> <span class="guide-desc">Delete the currently selected atoms and bonds.</span></div>
+      <div class="guide-item"><kbd>Esc</kbd> <span class="guide-desc">Cancel the current tool or deselect.</span></div>
     </div>
   </div>
 </div>
@@ -648,6 +831,26 @@
       return await this._ketcher.getCDXml();
     }
 
+    // Check if any atoms/bonds are selected
+    hasSelection() {
+      if (!this._ketcher) return false;
+      try {
+        const sel = this._ketcher.editor.selection();
+        return sel && ((sel.atoms && sel.atoms.length > 0) || (sel.bonds && sel.bonds.length > 0));
+      } catch { return false; }
+    }
+
+    // Get SMILES for just the selected fragment
+    async getSelectedSmiles() {
+      if (!this._ketcher) throw new Error('Ketcher not ready');
+      const selectedStruct = this._ketcher.editor.structSelected();
+      if (!selectedStruct || selectedStruct.atoms.size === 0) return '';
+      // Use Ketcher's formatter to convert the selected Struct to SMILES
+      const formatter = this._ketcher.formatterFactory.create('smiles');
+      const result = await formatter.getStructureFromStructAsync(selectedStruct);
+      return result;
+    }
+
     // Inject CSS into the same-origin Ketcher iframe
     injectCSS(css) {
       try {
@@ -685,6 +888,13 @@
   const statusText      = document.getElementById('status-text');
   const ketcherFrame    = document.getElementById('ketcher-frame');
   const ioLabel         = document.getElementById('io-label');
+  const getSelectedBtn  = document.getElementById('get-selected-btn');
+  const smilesSourceBadge = document.getElementById('smiles-source-badge');
+
+  // ── Trap wheel events inside editor so page doesn't scroll ──
+  document.getElementById('editor-container').addEventListener('wheel', function(e) {
+    e.preventDefault();
+  }, { passive: false });
 
   // ── Template molecules ──
   const TEMPLATES = [
@@ -792,8 +1002,10 @@
         if (currentSmiles) {
           smilesInput.classList.add('valid');
           smilesInput.classList.remove('invalid');
+          showSourceBadge('full-canvas');
         } else {
           smilesInput.classList.remove('valid', 'invalid');
+          hideSourceBadge();
         }
       } catch (e) {
         console.error('Failed to get SMILES:', e);
@@ -850,6 +1062,40 @@
     updateCopyData('');
     clearSmilesError();
     smilesInput.classList.remove('valid', 'invalid');
+  }
+
+  // ── Get Selected — export SMILES for selected fragment only ──
+  async function getSelected() {
+    if (!ketcherBridge || !ketcherBridge.isReady) return;
+    try {
+      if (!ketcherBridge.hasSelection()) {
+        showSmilesError('No atoms selected — use the selection tool (lasso) to select a fragment');
+        return;
+      }
+      const smiles = await ketcherBridge.getSelectedSmiles();
+      if (smiles) {
+        smilesInput.value = smiles;
+        updateCopyData(smiles);
+        clearSmilesError();
+        smilesInput.classList.remove('invalid');
+        smilesInput.classList.add('valid');
+        showSourceBadge('selection');
+      } else {
+        showSmilesError('Could not extract SMILES from selection');
+      }
+    } catch (e) {
+      console.error('Get selected failed:', e);
+      showSmilesError('Selection export failed: ' + e.message);
+    }
+  }
+
+  function showSourceBadge(type) {
+    smilesSourceBadge.className = 'smiles-source-badge visible ' + type;
+    smilesSourceBadge.textContent = type === 'selection' ? 'Selected fragment' : 'Full canvas';
+  }
+
+  function hideSourceBadge() {
+    smilesSourceBadge.className = 'smiles-source-badge';
   }
 
   // ── RDKit mol helper — always cleans up, even on invalid SMILES ──
@@ -982,11 +1228,17 @@
 
     statusBanner.classList.add('ready');
     statusSpinner.outerHTML = '<div class="dot"></div>';
-    statusText.textContent = 'Editor ready \u2014 draw a molecule or type SMILES';
+    statusText.innerHTML = 'Editor ready &mdash; draw a molecule or type SMILES. New to this? Check out the <a href="#guide-toggle" id="guide-link" style="color:inherit;text-decoration:underline;cursor:pointer">short guide below</a>!';
+    document.getElementById('guide-link').addEventListener('click', function(e) {
+      e.preventDefault();
+      document.getElementById('guide-toggle').scrollIntoView({ behavior: 'smooth' });
+      toggleGuide();
+    });
 
     smilesInput.disabled = false;
     clearBtn.disabled = false;
     convertBtn.disabled = false;
+    getSelectedBtn.disabled = false;
 
     // Enter key in textarea triggers convert
     smilesInput.addEventListener('keydown', (e) => {
@@ -997,6 +1249,7 @@
     });
 
     convertBtn.addEventListener('click', convert);
+    getSelectedBtn.addEventListener('click', getSelected);
     copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
     sendBtn.addEventListener('click', sendToConverter);
     clearBtn.addEventListener('click', clearInput);
@@ -1047,6 +1300,13 @@
       console.warn('RDKit failed to load (export conversions unavailable):', e);
     });
   }
+
+  // ── User guide toggle ──
+  function toggleGuide() {
+    document.getElementById('guide-toggle').classList.toggle('open');
+    document.getElementById('guide-content').classList.toggle('open');
+  }
+  document.getElementById('guide-toggle').addEventListener('click', toggleGuide);
 
   // ── Theme toggle ──
   (function initTheme() {

@@ -246,12 +246,83 @@
   }
 
   #ketcher-frame {
-    width: 100%;
-    height: 100%;
+    width: 125%;
+    height: 125%;
     border: none;
     border-radius: 8px;
     background: #fff;
+    transform: scale(0.8);
+    transform-origin: top left;
+    transition: transform 0.2s;
   }
+
+  .editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+  }
+  .editor-header .section-label { margin-bottom: 0; }
+  .fullscreen-btn {
+    background: var(--surface-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .fullscreen-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .fullscreen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* -- Fullscreen mode -- */
+  .editor-card.fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    border-radius: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+  }
+  .editor-card.fullscreen .editor-header { display: none; }
+  .editor-card.fullscreen #editor-container {
+    height: 100% !important;
+    border-radius: 0;
+    border: none;
+    flex: 1;
+  }
+  .editor-card.fullscreen #ketcher-frame {
+    width: 100%;
+    height: 100%;
+    transform: none;
+    border-radius: 0;
+  }
+  .fullscreen-bar {
+    display: none;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .fullscreen-bar .fs-label {
+    font-size: 0.82rem;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
+  .editor-card.fullscreen .fullscreen-bar { display: flex; }
 
   /* -- SMILES I/O card -- */
   .smiles-io-card {
@@ -301,6 +372,12 @@
   .smiles-input-wrap textarea.invalid {
     border-color: var(--red);
     box-shadow: 0 0 0 3px var(--red-dim);
+  }
+
+  .smiles-input-wrap textarea.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    background: var(--accent-glow);
   }
 
   .smiles-error {
@@ -619,7 +696,7 @@
       <div class="smiles-io-card">
         <div class="section-label" id="io-label">SMILES</div>
         <div class="smiles-input-wrap">
-          <textarea id="smiles-input" placeholder="Draw or type SMILES..." disabled autocomplete="off" spellcheck="false" rows="2"></textarea>
+          <textarea id="smiles-input" placeholder="Type SMILES / InChI / InChIKey / SMARTS — or drop a Molfile / RXN / CDXML file" disabled autocomplete="off" spellcheck="false" rows="2"></textarea>
         </div>
         <div class="smiles-source-badge" id="smiles-source-badge"></div>
         <div class="smiles-error" id="smiles-error">Invalid SMILES string</div>
@@ -627,15 +704,12 @@
           <button class="btn" id="convert-btn" disabled>
             Convert
           </button>
-          <button class="btn-secondary" id="get-selected-btn" disabled>
-            Get Selected
-          </button>
           <button class="btn-secondary" id="copy-btn" disabled data-copy="">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
           </button>
           <button class="btn-secondary" id="send-btn" disabled>
-            Analyze in Formula Converter &rarr;
+            Analyze &rarr;
           </button>
           <button class="btn-secondary" id="clear-btn" disabled>
             Clear
@@ -669,8 +743,21 @@
 
     <!-- Right column -->
     <div class="right-col">
-      <div class="editor-card">
-        <div class="section-label">Structure Editor</div>
+      <div class="editor-card" id="editor-card">
+        <div class="fullscreen-bar">
+          <span class="fs-label">Structure Editor — Fullscreen</span>
+          <button class="btn-secondary" id="exit-fullscreen-btn" style="padding:0.4rem 0.8rem;font-size:0.78rem">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            Exit Fullscreen
+          </button>
+        </div>
+        <div class="editor-header">
+          <div class="section-label">Structure Editor</div>
+          <button class="fullscreen-btn" id="fullscreen-btn" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            Fullscreen
+          </button>
+        </div>
         <!-- Ketcher standalone build (EPAM, Apache 2.0) served from same origin.
              Built from https://github.com/epam/ketcher — see ketcher/ directory. -->
         <div id="editor-container">
@@ -696,61 +783,36 @@
     <div class="guide-content" id="guide-content">
 
       <div class="guide-group-title">Top Toolbar</div>
-      <div class="guide-item"><kbd>Clear</kbd> <span class="guide-desc">Erase everything on the canvas and start fresh.</span></div>
-      <div class="guide-item"><kbd>Open</kbd> <span class="guide-desc">Open a molecule from a file (MOL, SDF, etc.).</span></div>
-      <div class="guide-item"><kbd>Save</kbd> <span class="guide-desc">Save the current structure to a file.</span></div>
-      <div class="guide-item"><kbd>Undo</kbd> <span class="guide-desc">Revert the last drawing action.</span></div>
-      <div class="guide-item"><kbd>Redo</kbd> <span class="guide-desc">Re-apply an undone action.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></kbd> <span class="guide-desc"><strong>New</strong> — Clear the canvas and start a fresh document.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></kbd> <span class="guide-desc"><strong>Open</strong> — Open a molecule from a file (MOL, SDF, KET, etc.).</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></kbd> <span class="guide-desc"><strong>Save</strong> — Save the current structure to a file.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></kbd> <span class="guide-desc"><strong>Undo</strong> — Revert the last drawing action.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></kbd> <span class="guide-desc"><strong>Redo</strong> — Re-apply an undone action.</span></div>
 
-      <div class="guide-group-title">Left Toolbar — Selection &amp; View</div>
-      <div class="guide-item"><kbd>Hand</kbd> <span class="guide-desc">Pan the canvas by clicking and dragging.</span></div>
-      <div class="guide-item"><kbd>Lasso</kbd> <span class="guide-desc">Freeform selection — drag to select atoms and bonds.</span></div>
-      <div class="guide-item"><kbd>Rectangle</kbd> <span class="guide-desc">Rectangular selection — drag a box to select atoms and bonds.</span></div>
-      <div class="guide-item"><kbd>Fragment</kbd> <span class="guide-desc">Select an entire connected fragment with one click.</span></div>
-      <div class="guide-item"><kbd>Erase</kbd> <span class="guide-desc">Click atoms or bonds to delete them.</span></div>
+      <div class="guide-group-title">Left Toolbar — Selection &amp; Drawing</div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 13"/></svg></kbd> <span class="guide-desc"><strong>Hand</strong> — Pan the canvas by clicking and dragging.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9" stroke-dasharray="4 3"/><path d="M3 12l2-2 2 2"/></svg></kbd> <span class="guide-desc"><strong>Lasso</strong> — Freeform selection: drag to select atoms and bonds.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 3"/></svg></kbd> <span class="guide-desc"><strong>Rectangle</strong> — Rectangular selection: drag a box to select atoms and bonds.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><line x1="10.5" y1="10.5" x2="13.5" y2="13.5"/></svg></kbd> <span class="guide-desc"><strong>Fragment</strong> — Select an entire connected fragment with one click.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5.5L8.5 17l-5-5"/><line x1="17" y1="3" x2="22" y2="8" stroke-width="2.5"/></svg></kbd> <span class="guide-desc"><strong>Erase</strong> — Click atoms or bonds to delete them.</span></div>
 
       <div class="guide-group-title">Left Toolbar — Bonds</div>
-      <div class="guide-item"><kbd>Single</kbd> <span class="guide-desc">Draw a single bond between atoms.</span></div>
-      <div class="guide-item"><kbd>Double</kbd> <span class="guide-desc">Draw a double bond between atoms.</span></div>
-      <div class="guide-item"><kbd>Triple</kbd> <span class="guide-desc">Draw a triple bond between atoms.</span></div>
-      <div class="guide-item"><kbd>Wedge</kbd> <span class="guide-desc">Wedge bond — indicates a bond pointing above the plane (stereochemistry).</span></div>
-      <div class="guide-item"><kbd>Dash</kbd> <span class="guide-desc">Dashed wedge bond — indicates a bond pointing below the plane.</span></div>
-      <div class="guide-item"><kbd>Chain</kbd> <span class="guide-desc">Draw a carbon chain by dragging.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></kbd> <span class="guide-desc"><strong>Single</strong> — Draw a single bond between atoms.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="12" x2="11" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="12" x2="13" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></kbd> <span class="guide-desc"><strong>Double</strong> — Draw a double bond between atoms.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><line x1="0.5" y1="12" x2="10.5" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="2.5" y1="12" x2="12.5" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="4.5" y1="12" x2="13.5" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></kbd> <span class="guide-desc"><strong>Triple</strong> — Draw a triple bond between atoms.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><polygon points="2,12 12,2 13,3" fill="currentColor"/></svg></kbd> <span class="guide-desc"><strong>Wedge</strong> — Bond pointing above the plane (stereochemistry).</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="12" x2="12" y2="2" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2" stroke-linecap="round"/></svg></kbd> <span class="guide-desc"><strong>Dashed wedge</strong> — Bond pointing below the plane.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 14 14"><polyline points="1,12 4,5 8,12 12,5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></kbd> <span class="guide-desc"><strong>Chain</strong> — Draw a carbon chain by dragging.</span></div>
 
-      <div class="guide-group-title">Left Toolbar — Rings</div>
-      <div class="guide-item"><kbd>3</kbd> <span class="guide-desc">Insert a 3-membered ring (cyclopropane).</span></div>
-      <div class="guide-item"><kbd>4</kbd> <span class="guide-desc">Insert a 4-membered ring (cyclobutane).</span></div>
-      <div class="guide-item"><kbd>5</kbd> <span class="guide-desc">Insert a 5-membered ring (cyclopentane).</span></div>
-      <div class="guide-item"><kbd>6</kbd> <span class="guide-desc">Insert a 6-membered ring (cyclohexane).</span></div>
-      <div class="guide-item"><kbd>7</kbd> <span class="guide-desc">Insert a 7-membered ring (cycloheptane).</span></div>
-      <div class="guide-item"><kbd>8</kbd> <span class="guide-desc">Insert an 8-membered ring (cyclooctane).</span></div>
-      <div class="guide-item"><kbd>Benzene</kbd> <span class="guide-desc">Insert an aromatic benzene ring.</span></div>
+      <div class="guide-group-title">Left Toolbar — Charges, Shapes &amp; Annotations</div>
+      <div class="guide-item"><kbd>+</kbd> <span class="guide-desc"><strong>Charge +</strong> — Add a positive charge to the clicked atom.</span></div>
+      <div class="guide-item"><kbd>&minus;</kbd> <span class="guide-desc"><strong>Charge &minus;</strong> — Add a negative charge to the clicked atom.</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="14 7 19 12 14 17"/></svg></kbd> <span class="guide-desc"><strong>Arrow</strong> — Draw a reaction arrow on the canvas.</span></div>
+      <div class="guide-item"><kbd>R</kbd> <span class="guide-desc"><strong>R-Group</strong> — Label atoms as R-group attachment points (R1, R2, etc.).</span></div>
+      <div class="guide-item"><kbd>S</kbd> <span class="guide-desc"><strong>S-Group</strong> — Group atoms into an S-group (abbreviation, polymer bracket, etc.).</span></div>
+      <div class="guide-item"><kbd><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9.5" y1="4" x2="9.5" y2="20"/><line x1="14.5" y1="4" x2="14.5" y2="20"/><line x1="7" y1="20" x2="17" y2="20"/></svg></kbd> <span class="guide-desc"><strong>Text</strong> — Add a text annotation to the canvas.</span></div>
 
-      <div class="guide-group-title">Left Toolbar — Atoms</div>
-      <div class="guide-item"><kbd>C</kbd> <span class="guide-desc">Set atom label to Carbon.</span></div>
-      <div class="guide-item"><kbd>N</kbd> <span class="guide-desc">Set atom label to Nitrogen.</span></div>
-      <div class="guide-item"><kbd>O</kbd> <span class="guide-desc">Set atom label to Oxygen.</span></div>
-      <div class="guide-item"><kbd>S</kbd> <span class="guide-desc">Set atom label to Sulfur.</span></div>
-      <div class="guide-item"><kbd>P</kbd> <span class="guide-desc">Set atom label to Phosphorus.</span></div>
-      <div class="guide-item"><kbd>F</kbd> <span class="guide-desc">Set atom label to Fluorine.</span></div>
-      <div class="guide-item"><kbd>Cl</kbd> <span class="guide-desc">Set atom label to Chlorine.</span></div>
-      <div class="guide-item"><kbd>Br</kbd> <span class="guide-desc">Set atom label to Bromine.</span></div>
-      <div class="guide-item"><kbd>I</kbd> <span class="guide-desc">Set atom label to Iodine.</span></div>
-      <div class="guide-item"><kbd>H</kbd> <span class="guide-desc">Set atom label to Hydrogen.</span></div>
-      <div class="guide-item"><kbd>Si</kbd> <span class="guide-desc">Set atom label to Silicon.</span></div>
-      <div class="guide-item"><kbd>?...</kbd> <span class="guide-desc">Open the periodic table to pick any element.</span></div>
-
-      <div class="guide-group-title">Left Toolbar — Charges &amp; Modifiers</div>
-      <div class="guide-item"><kbd>+</kbd> <span class="guide-desc">Add a positive charge to the clicked atom.</span></div>
-      <div class="guide-item"><kbd>-</kbd> <span class="guide-desc">Add a negative charge to the clicked atom.</span></div>
-
-      <div class="guide-group-title">Left Toolbar — Shapes &amp; Arrows</div>
-      <div class="guide-item"><kbd>Arrow</kbd> <span class="guide-desc">Draw a reaction arrow on the canvas.</span></div>
-      <div class="guide-item"><kbd>R-Group</kbd> <span class="guide-desc">Label atoms as R-group attachment points (R1, R2, etc.).</span></div>
-      <div class="guide-item"><kbd>S-Group</kbd> <span class="guide-desc">Group atoms into an S-group (abbreviation, polymer bracket, etc.).</span></div>
-      <div class="guide-item"><kbd>Text</kbd> <span class="guide-desc">Add a text annotation to the canvas.</span></div>
-
-      <div class="guide-group-title">General Shortcuts</div>
+      <div class="guide-group-title">Keyboard Shortcuts</div>
       <div class="guide-item"><kbd>Ctrl+Z</kbd> <span class="guide-desc">Undo the last action.</span></div>
       <div class="guide-item"><kbd>Ctrl+Y</kbd> <span class="guide-desc">Redo the last undone action.</span></div>
       <div class="guide-item"><kbd>Ctrl+A</kbd> <span class="guide-desc">Select all atoms and bonds.</span></div>
@@ -758,6 +820,8 @@
       <div class="guide-item"><kbd>Ctrl+V</kbd> <span class="guide-desc">Paste a previously copied structure.</span></div>
       <div class="guide-item"><kbd>Del</kbd> <span class="guide-desc">Delete the currently selected atoms and bonds.</span></div>
       <div class="guide-item"><kbd>Esc</kbd> <span class="guide-desc">Cancel the current tool or deselect.</span></div>
+
+      <p style="margin-top:1.2rem;font-size:0.78rem;color:var(--text-dim)">For a full reference of all Ketcher tools and features, see the <a href="https://github.com/epam/ketcher/blob/v3.2.0/documentation/help.md#ketcher-overview" target="_blank" rel="noopener" style="color:var(--accent)">complete Ketcher documentation</a>.</p>
     </div>
   </div>
 </div>
@@ -888,8 +952,10 @@
   const statusText      = document.getElementById('status-text');
   const ketcherFrame    = document.getElementById('ketcher-frame');
   const ioLabel         = document.getElementById('io-label');
-  const getSelectedBtn  = document.getElementById('get-selected-btn');
   const smilesSourceBadge = document.getElementById('smiles-source-badge');
+  const editorCard      = document.getElementById('editor-card');
+  const fullscreenBtn   = document.getElementById('fullscreen-btn');
+  const exitFsBtn       = document.getElementById('exit-fullscreen-btn');
 
   // ── Trap wheel events inside editor so page doesn't scroll ──
   document.getElementById('editor-container').addEventListener('wheel', function(e) {
@@ -951,7 +1017,7 @@
     bar.appendChild(shuffleBtn);
   }
 
-  // ── Load SMILES into editor (clears first, then sets) ──
+  // ── Load SMILES into editor (used by templates and URL loading) ──
   async function loadSmiles(smiles) {
     if (!ketcherBridge || !smiles) return false;
     try {
@@ -976,22 +1042,76 @@
     }
   }
 
-  // ── Convert: if textarea has SMILES → load into editor; if empty → get from editor ──
+  // ── Detect input format from text content ──
+  function detectInputFormat(text) {
+    const t = text.trim();
+    if (!t) return null;
+    if (t.startsWith('InChI=')) return 'inchi';
+    if (/^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(t)) return 'inchikey';
+    if (t.startsWith('$RXN')) return 'rxn';
+    if (t.startsWith('<?xml') || t.startsWith('<CDXML')) return 'cdxml';
+    if (t.includes('V2000') || t.includes('V3000')) return 'molfile';
+    return 'smiles'; // covers SMILES and SMARTS
+  }
+
+  // ── Load any supported format into editor ──
+  async function loadStructure(text) {
+    if (!ketcherBridge || !text) return false;
+    const fmt = detectInputFormat(text.trim());
+
+    if (fmt === 'inchikey') {
+      showSmilesError('InChIKey cannot be converted back to a structure (one-way hash)');
+      return false;
+    }
+
+    try {
+      isUpdating = true;
+      await ketcherBridge.setMolecule(text.trim());
+      // Get canonical SMILES back from editor
+      const smiles = await ketcherBridge.getSmiles();
+      currentSmiles = smiles || '';
+      if (activeExportFormat === 'smiles') {
+        smilesInput.value = currentSmiles;
+        updateCopyData(currentSmiles);
+      } else {
+        refreshExport();
+      }
+      clearSmilesError();
+      smilesInput.classList.remove('invalid');
+      smilesInput.classList.add('valid');
+      return true;
+    } catch (e) {
+      console.error('Failed to load structure:', e);
+      return false;
+    } finally {
+      isUpdating = false;
+    }
+  }
+
+  // ── Convert: selection-aware, multi-format ──
+  // If textarea has content → detect format and load into editor.
+  // If textarea is empty → pull from editor (selected fragment if any, else full canvas).
   async function convert() {
     if (isUpdating || !ketcherBridge) return;
-    const smiles = smilesInput.value.trim();
-    if (smiles) {
-      // Push textarea SMILES into editor
-      const success = await loadSmiles(smiles);
-      if (!success) {
-        showSmilesError('Invalid SMILES string');
+    const inputText = smilesInput.value.trim();
+    if (inputText) {
+      const success = await loadStructure(inputText);
+      if (!success && detectInputFormat(inputText) !== 'inchikey') {
+        showSmilesError('Could not parse input — check the format');
         updateCopyData('');
       }
     } else {
-      // Pull SMILES from editor into textarea
+      // Pull from editor — selection-aware
       try {
-        const editorSmiles = await ketcherBridge.getSmiles();
-        currentSmiles = editorSmiles || '';
+        let smiles, source;
+        if (ketcherBridge.hasSelection()) {
+          smiles = await ketcherBridge.getSelectedSmiles();
+          source = 'selection';
+        } else {
+          smiles = await ketcherBridge.getSmiles();
+          source = 'full-canvas';
+        }
+        currentSmiles = smiles || '';
         if (activeExportFormat === 'smiles') {
           smilesInput.value = currentSmiles;
           updateCopyData(currentSmiles);
@@ -1002,14 +1122,14 @@
         if (currentSmiles) {
           smilesInput.classList.add('valid');
           smilesInput.classList.remove('invalid');
-          showSourceBadge('full-canvas');
+          showSourceBadge(source);
         } else {
           smilesInput.classList.remove('valid', 'invalid');
           hideSourceBadge();
         }
       } catch (e) {
-        console.error('Failed to get SMILES:', e);
-        showSmilesError('Could not read SMILES from editor');
+        console.error('Failed to get structure:', e);
+        showSmilesError('Could not read structure from editor');
       }
     }
   }
@@ -1050,43 +1170,35 @@
     });
   }
 
-  // ── Send to formula converter (always uses SMILES) ──
-  function sendToConverter() {
-    if (!currentSmiles) return;
-    window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(currentSmiles), '_blank');
+  // ── Analyze — selection-aware, converts to SMILES before navigating ──
+  async function sendToConverter() {
+    if (!ketcherBridge || !ketcherBridge.isReady) return;
+    try {
+      let smiles;
+      if (ketcherBridge.hasSelection()) {
+        smiles = await ketcherBridge.getSelectedSmiles();
+      } else {
+        smiles = await ketcherBridge.getSmiles();
+      }
+      if (!smiles) {
+        showSmilesError('Nothing to analyze — draw or type a structure first');
+        return;
+      }
+      currentSmiles = smiles;
+      window.open('smiles_to_formula.html?smiles=' + encodeURIComponent(smiles), '_blank');
+    } catch (e) {
+      console.error('Analyze failed:', e);
+      showSmilesError('Could not get SMILES for analysis');
+    }
   }
 
-  // ── Clear SMILES input ──
+  // ── Clear input ──
   function clearInput() {
     smilesInput.value = '';
     updateCopyData('');
     clearSmilesError();
     smilesInput.classList.remove('valid', 'invalid');
-  }
-
-  // ── Get Selected — export SMILES for selected fragment only ──
-  async function getSelected() {
-    if (!ketcherBridge || !ketcherBridge.isReady) return;
-    try {
-      if (!ketcherBridge.hasSelection()) {
-        showSmilesError('No atoms selected — use the selection tool (lasso) to select a fragment');
-        return;
-      }
-      const smiles = await ketcherBridge.getSelectedSmiles();
-      if (smiles) {
-        smilesInput.value = smiles;
-        updateCopyData(smiles);
-        clearSmilesError();
-        smilesInput.classList.remove('invalid');
-        smilesInput.classList.add('valid');
-        showSourceBadge('selection');
-      } else {
-        showSmilesError('Could not extract SMILES from selection');
-      }
-    } catch (e) {
-      console.error('Get selected failed:', e);
-      showSmilesError('Selection export failed: ' + e.message);
-    }
+    hideSourceBadge();
   }
 
   function showSourceBadge(type) {
@@ -1210,9 +1322,40 @@
     }
   }
 
+  // ── Fullscreen toggle ──
+  function toggleFullscreen() {
+    editorCard.classList.toggle('fullscreen');
+    const isFs = editorCard.classList.contains('fullscreen');
+    document.body.style.overflow = isFs ? 'hidden' : '';
+  }
+
+  // ── Drag-and-drop on textarea ──
+  function initDragDrop() {
+    smilesInput.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      smilesInput.classList.add('drag-over');
+    });
+    smilesInput.addEventListener('dragleave', () => {
+      smilesInput.classList.remove('drag-over');
+    });
+    smilesInput.addEventListener('drop', (e) => {
+      e.preventDefault();
+      smilesInput.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          smilesInput.value = ev.target.result;
+          convert();
+        };
+        reader.readAsText(file);
+      }
+    });
+  }
+
   // ── Initialize Ketcher ──
   function onKetcherReady() {
-    // Hide 3D viewer and fullscreen buttons via CSS injection (same-origin)
+    // Hide 3D viewer button via CSS injection (same-origin); keep our own fullscreen
     ketcherBridge.injectCSS(`
       [data-testid="3D Viewer button"],
       [data-testid="fullscreen-mode-button"] {
@@ -1228,7 +1371,7 @@
 
     statusBanner.classList.add('ready');
     statusSpinner.outerHTML = '<div class="dot"></div>';
-    statusText.innerHTML = 'Editor ready &mdash; draw a molecule or type SMILES. New to this? Check out the <a href="#guide-toggle" id="guide-link" style="color:inherit;text-decoration:underline;cursor:pointer">short guide below</a>!';
+    statusText.innerHTML = 'Editor ready &mdash; draw a structure, type SMILES/InChI/SMARTS, or drop a file. <a href="#guide-toggle" id="guide-link" style="color:inherit;text-decoration:underline;cursor:pointer">Quick guide&nbsp;&darr;</a>';
     document.getElementById('guide-link').addEventListener('click', function(e) {
       e.preventDefault();
       document.getElementById('guide-toggle').scrollIntoView({ behavior: 'smooth' });
@@ -1238,7 +1381,8 @@
     smilesInput.disabled = false;
     clearBtn.disabled = false;
     convertBtn.disabled = false;
-    getSelectedBtn.disabled = false;
+    sendBtn.disabled = false;
+    fullscreenBtn.disabled = false;
 
     // Enter key in textarea triggers convert
     smilesInput.addEventListener('keydown', (e) => {
@@ -1249,10 +1393,18 @@
     });
 
     convertBtn.addEventListener('click', convert);
-    getSelectedBtn.addEventListener('click', getSelected);
     copyBtn.addEventListener('click', () => copyToClipboard(copyBtn));
     sendBtn.addEventListener('click', sendToConverter);
     clearBtn.addEventListener('click', clearInput);
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    exitFsBtn.addEventListener('click', toggleFullscreen);
+
+    // ESC exits fullscreen
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && editorCard.classList.contains('fullscreen')) {
+        toggleFullscreen();
+      }
+    });
 
     // Ensure iframe gets keyboard focus when clicked
     document.getElementById('editor-container').addEventListener('click', () => {
@@ -1260,6 +1412,7 @@
     });
 
     initExportToolbar();
+    initDragDrop();
     renderTemplateChips();
     loadFromUrl();
 

@@ -903,6 +903,75 @@
   .nmr-peak-table td:first-child,
   .nmr-peak-table th:first-child { text-align: right; }
 
+  /* Interactive H-NMR peak table rows */
+  .nmr-peak-table.interactive tbody tr {
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .nmr-peak-table.interactive tbody tr:hover {
+    background: var(--accent-glow);
+  }
+  .nmr-peak-table.interactive tbody tr.active {
+    background: var(--accent-glow);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  /* Interactive H-NMR assignment structure */
+  .hnmr-assign-structure {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    margin: 0.6rem 0;
+    padding: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    position: relative;
+  }
+  .hnmr-assign-structure svg { max-width: 100%; height: auto; }
+  .hnmr-assign-label {
+    position: absolute;
+    top: 0.4rem;
+    left: 0.6rem;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+  @keyframes atom-highlight-pulse {
+    0%, 100% { opacity: 0.5; r: 12; }
+    50% { opacity: 0.85; }
+  }
+  .hnmr-assign-structure .atom-hl-glow {
+    animation: atom-highlight-pulse 1.6s ease-in-out infinite;
+  }
+
+  /* IR table */
+  .ir-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+  }
+  .ir-card .section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 0.8rem;
+  }
+  .ir-band-table { margin-bottom: 0.6rem; }
+  .ir-band-table td:first-child,
+  .ir-band-table th:first-child { text-align: right; }
+  .ir-intensity-strong { color: var(--red); font-weight: 600; }
+  .ir-intensity-medium { color: var(--orange); font-weight: 500; }
+  .ir-intensity-weak { color: var(--text-dim); }
+  .ir-intensity-variable { color: var(--accent); font-weight: 500; }
+
   .nmr-loading {
     display: flex;
     flex-direction: column;
@@ -1056,6 +1125,9 @@
   let viewer3dHideH = false;
   let viewer3dConversionId = 0; // tracks which conversion the async 3D fetch belongs to
   let nmrConversionId = 0;     // tracks which conversion the async NMR prediction belongs to
+  let currentCanonical = '';      // current molecule's canonical SMILES (for highlight regeneration)
+  let currentHNmrPeaks = null;    // current H-NMR peaks array (for interactive assignment)
+  let selectedNmrPeakIdx = -1;    // index of currently highlighted peak in table (-1 = none)
   const conversionHistory = JSON.parse(localStorage.getItem('smiles-history') || '[]');
 
   // ── Molecule library (~100 common chemicals) ──
@@ -1374,6 +1446,143 @@
     { smarts: '[CX4H2]', shift: 25.0, label: 'Alkyl CH\u2082' },
     { smarts: '[CX4H1]', shift: 30.0, label: 'Alkyl CH' },
     { smarts: '[CX4H0]', shift: 35.0, label: 'Quaternary C' },
+  ];
+
+  // ── IR Absorption Rules (SMARTS → characteristic frequencies) ──
+  // Each rule: { smarts, bands: [{ rangeMin, rangeMax, intensity, label }] }
+  // intensity: 'strong', 'medium', 'weak', 'variable', 'broad,strong'
+  const IR_ABSORPTION_RULES = [
+    // O-H stretches
+    { smarts: '[OX2H1][CX3]=[OX1]', bands: [
+      { rangeMin: 2500, rangeMax: 3300, intensity: 'broad,strong', label: 'O\u2013H stretch (carboxylic acid)' },
+      { rangeMin: 1700, rangeMax: 1725, intensity: 'strong', label: 'C=O stretch (carboxylic acid)' },
+      { rangeMin: 1200, rangeMax: 1315, intensity: 'strong', label: 'C\u2013O stretch (carboxylic acid)' },
+      { rangeMin: 910, rangeMax: 950, intensity: 'medium', label: 'O\u2013H bend (carboxylic acid, out-of-plane)' },
+    ]},
+    { smarts: '[OX2H1][cX3]', bands: [
+      { rangeMin: 3200, rangeMax: 3550, intensity: 'broad,strong', label: 'O\u2013H stretch (phenol)' },
+      { rangeMin: 1150, rangeMax: 1250, intensity: 'strong', label: 'C\u2013O stretch (phenol)' },
+    ]},
+    { smarts: '[OX2H1][CX4]', bands: [
+      { rangeMin: 3200, rangeMax: 3550, intensity: 'broad,strong', label: 'O\u2013H stretch (alcohol)' },
+      { rangeMin: 1000, rangeMax: 1100, intensity: 'strong', label: 'C\u2013O stretch (alcohol)' },
+    ]},
+    // N-H stretches
+    { smarts: '[NX3H2]', bands: [
+      { rangeMin: 3300, rangeMax: 3500, intensity: 'medium', label: 'N\u2013H stretch (primary amine, 2 bands)' },
+      { rangeMin: 1550, rangeMax: 1640, intensity: 'medium', label: 'N\u2013H bend (primary amine)' },
+    ]},
+    { smarts: '[NX3H1]([#6])[#6]', bands: [
+      { rangeMin: 3300, rangeMax: 3500, intensity: 'medium', label: 'N\u2013H stretch (secondary amine)' },
+    ]},
+    { smarts: '[NX3H2][CX3](=[OX1])', bands: [
+      { rangeMin: 3350, rangeMax: 3500, intensity: 'medium', label: 'N\u2013H stretch (primary amide, 2 bands)' },
+      { rangeMin: 1630, rangeMax: 1690, intensity: 'strong', label: 'C=O stretch (amide I)' },
+      { rangeMin: 1510, rangeMax: 1570, intensity: 'strong', label: 'N\u2013H bend (amide II)' },
+    ]},
+    { smarts: '[NX3H1][CX3](=[OX1])', bands: [
+      { rangeMin: 3300, rangeMax: 3400, intensity: 'medium', label: 'N\u2013H stretch (secondary amide)' },
+      { rangeMin: 1630, rangeMax: 1680, intensity: 'strong', label: 'C=O stretch (amide I)' },
+      { rangeMin: 1510, rangeMax: 1570, intensity: 'strong', label: 'N\u2013H bend (amide II)' },
+    ]},
+    // Carbonyl stretches (order: most specific first)
+    { smarts: '[CX3H1](=O)', bands: [
+      { rangeMin: 1720, rangeMax: 1740, intensity: 'strong', label: 'C=O stretch (aldehyde)' },
+      { rangeMin: 2700, rangeMax: 2850, intensity: 'medium', label: 'C\u2013H stretch (aldehyde, 2 bands)' },
+    ]},
+    { smarts: '[CX3](=O)[OX2][#6]', bands: [
+      { rangeMin: 1735, rangeMax: 1750, intensity: 'strong', label: 'C=O stretch (ester)' },
+      { rangeMin: 1150, rangeMax: 1300, intensity: 'strong', label: 'C\u2013O stretch (ester)' },
+    ]},
+    { smarts: '[CX3](=O)[OX1-]', bands: [
+      { rangeMin: 1550, rangeMax: 1610, intensity: 'strong', label: 'C=O asymmetric stretch (carboxylate)' },
+      { rangeMin: 1400, rangeMax: 1450, intensity: 'strong', label: 'C=O symmetric stretch (carboxylate)' },
+    ]},
+    { smarts: '[CX3](=O)([#6])[#6]', bands: [
+      { rangeMin: 1705, rangeMax: 1725, intensity: 'strong', label: 'C=O stretch (ketone)' },
+    ]},
+    { smarts: '[CX3](=O)[#6]', bands: [
+      { rangeMin: 1700, rangeMax: 1730, intensity: 'strong', label: 'C=O stretch (carbonyl)' },
+    ]},
+    // Anhydride
+    { smarts: '[CX3](=O)[OX2][CX3](=O)', bands: [
+      { rangeMin: 1800, rangeMax: 1830, intensity: 'strong', label: 'C=O stretch (anhydride, 2 bands)' },
+      { rangeMin: 1740, rangeMax: 1775, intensity: 'strong', label: 'C=O stretch (anhydride, 2 bands)' },
+    ]},
+    // Nitrile
+    { smarts: '[CX2]#[NX1]', bands: [
+      { rangeMin: 2200, rangeMax: 2260, intensity: 'medium', label: 'C\u2261N stretch (nitrile)' },
+    ]},
+    // Alkyne
+    { smarts: '[CX2]#[CX2]', bands: [
+      { rangeMin: 2100, rangeMax: 2260, intensity: 'weak', label: 'C\u2261C stretch (alkyne)' },
+    ]},
+    { smarts: '[CX2H1]#[CX2]', bands: [
+      { rangeMin: 3260, rangeMax: 3330, intensity: 'strong', label: '\u2261C\u2013H stretch (terminal alkyne)' },
+    ]},
+    // Nitro
+    { smarts: '[NX3+](=O)[O-]', bands: [
+      { rangeMin: 1500, rangeMax: 1570, intensity: 'strong', label: 'N=O asymmetric stretch (nitro)' },
+      { rangeMin: 1300, rangeMax: 1370, intensity: 'strong', label: 'N=O symmetric stretch (nitro)' },
+    ]},
+    // Alkene
+    { smarts: '[CX3]=[CX3]', bands: [
+      { rangeMin: 1600, rangeMax: 1680, intensity: 'variable', label: 'C=C stretch (alkene)' },
+    ]},
+    { smarts: '[CX3H1]=[CX3]', bands: [
+      { rangeMin: 3010, rangeMax: 3100, intensity: 'medium', label: '=C\u2013H stretch (alkene)' },
+      { rangeMin: 880, rangeMax: 995, intensity: 'strong', label: '=C\u2013H bend (alkene, out-of-plane)' },
+    ]},
+    { smarts: '[CX3H2]=[CX3]', bands: [
+      { rangeMin: 3010, rangeMax: 3100, intensity: 'medium', label: '=C\u2013H stretch (alkene)' },
+      { rangeMin: 880, rangeMax: 995, intensity: 'strong', label: '=C\u2013H bend (alkene, out-of-plane)' },
+    ]},
+    // Aromatic ring
+    { smarts: '[cX3]1[cX3][cX3][cX3][cX3][cX3]1', bands: [
+      { rangeMin: 3000, rangeMax: 3100, intensity: 'medium', label: '=C\u2013H stretch (aromatic)' },
+      { rangeMin: 1450, rangeMax: 1600, intensity: 'variable', label: 'C=C stretch (aromatic ring)' },
+      { rangeMin: 675, rangeMax: 900, intensity: 'strong', label: '=C\u2013H bend (aromatic, out-of-plane)' },
+    ]},
+    // Sulfoxide & Sulfone
+    { smarts: '[SX3](=O)([#6])[#6]', bands: [
+      { rangeMin: 1030, rangeMax: 1070, intensity: 'strong', label: 'S=O stretch (sulfoxide)' },
+    ]},
+    { smarts: '[SX4](=O)(=O)([#6])[#6]', bands: [
+      { rangeMin: 1290, rangeMax: 1350, intensity: 'strong', label: 'S=O asymmetric stretch (sulfone)' },
+      { rangeMin: 1120, rangeMax: 1170, intensity: 'strong', label: 'S=O symmetric stretch (sulfone)' },
+    ]},
+    // Phosphate
+    { smarts: '[PX4](=O)([OX2])([OX2])[OX2]', bands: [
+      { rangeMin: 1200, rangeMax: 1275, intensity: 'strong', label: 'P=O stretch (phosphate)' },
+    ]},
+    // C-F
+    { smarts: '[CX4][F]', bands: [
+      { rangeMin: 1000, rangeMax: 1400, intensity: 'strong', label: 'C\u2013F stretch' },
+    ]},
+    // C-Cl
+    { smarts: '[CX4][Cl]', bands: [
+      { rangeMin: 600, rangeMax: 800, intensity: 'strong', label: 'C\u2013Cl stretch' },
+    ]},
+    // C-Br
+    { smarts: '[CX4][Br]', bands: [
+      { rangeMin: 500, rangeMax: 680, intensity: 'strong', label: 'C\u2013Br stretch' },
+    ]},
+    // C-O ether
+    { smarts: '[CX4][OX2][CX4]', bands: [
+      { rangeMin: 1050, rangeMax: 1150, intensity: 'strong', label: 'C\u2013O\u2013C stretch (ether)' },
+    ]},
+    // Aliphatic C-H (general fallbacks — always present for organic molecules)
+    { smarts: '[CX4H3]', bands: [
+      { rangeMin: 2850, rangeMax: 3000, intensity: 'strong', label: 'C\u2013H stretch (sp\u00b3)' },
+      { rangeMin: 1350, rangeMax: 1470, intensity: 'medium', label: 'C\u2013H bend (sp\u00b3)' },
+    ]},
+    { smarts: '[CX4H2]', bands: [
+      { rangeMin: 2850, rangeMax: 3000, intensity: 'strong', label: 'C\u2013H stretch (sp\u00b3)' },
+      { rangeMin: 1350, rangeMax: 1470, intensity: 'medium', label: 'C\u2013H bend (sp\u00b3)' },
+    ]},
+    { smarts: '[CX4H1]', bands: [
+      { rangeMin: 2850, rangeMax: 3000, intensity: 'medium', label: 'C\u2013H stretch (sp\u00b3)' },
+    ]},
   ];
 
   // ── Aromatic substituent influence (Hays-type corrections relative to benzene 7.27) ──
@@ -1923,6 +2132,48 @@
     return { peaks };
   }
 
+  // ── IR Prediction Engine ──
+  function predictIR(mol, rdkit) {
+    // Pre-create all qmol objects for SMARTS matching
+    const qmols = [];
+    for (const rule of IR_ABSORPTION_RULES) {
+      const qmol = rdkit.get_qmol(rule.smarts);
+      qmols.push(qmol);
+    }
+
+    const bands = [];
+    const seen = new Set(); // deduplicate by label
+
+    for (let r = 0; r < IR_ABSORPTION_RULES.length; r++) {
+      if (!qmols[r] || !qmols[r].is_valid()) continue;
+      try {
+        const matchStr = mol.get_substruct_matches(qmols[r]);
+        const parsed = JSON.parse(matchStr);
+        const matches = Array.isArray(parsed) ? parsed : [];
+        if (matches.length > 0) {
+          for (const band of IR_ABSORPTION_RULES[r].bands) {
+            if (seen.has(band.label)) continue;
+            seen.add(band.label);
+            bands.push({
+              rangeMin: band.rangeMin,
+              rangeMax: band.rangeMax,
+              intensity: band.intensity,
+              label: band.label,
+              count: matches.length,
+            });
+          }
+        }
+      } catch(e) {}
+    }
+
+    // Cleanup qmols
+    for (const q of qmols) { if (q) try { q.delete(); } catch(e) {} }
+
+    // Sort by frequency descending (high wavenumber first)
+    bands.sort((a, b) => b.rangeMax - a.rangeMax);
+    return { bands };
+  }
+
   // ── NMR Interactive Spectrum Renderer ──
   // opts: { prefix, rangeMin, rangeMax, showIntegToggle }
   function renderNMRSpectrumHTML(peaks, opts) {
@@ -2310,10 +2561,13 @@
       zoom(factor, ppm);
     }, { passive: false });
 
+    let mouseDownX = 0, mouseDownY = 0;
     canvas.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       isDragging = true;
       dragStartX = canvasX(e);
+      mouseDownX = e.clientX;
+      mouseDownY = e.clientY;
       dragViewMin = viewMin;
       dragViewMax = viewMax;
       wrap.classList.add('dragging');
@@ -2347,10 +2601,27 @@
       }
     });
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (e) => {
       if (isDragging) {
+        const dx = Math.abs(e.clientX - mouseDownX);
+        const dy = Math.abs(e.clientY - mouseDownY);
+        const wasClick = dx < 4 && dy < 4;
         isDragging = false;
         wrap.classList.remove('dragging');
+
+        // Click-to-highlight: only for H-NMR viewer
+        if (wasClick && p === 'hnmr' && currentHNmrPeaks) {
+          const clickPpm = xToPpm(canvasX(e));
+          // Find nearest peak within 0.3 ppm tolerance
+          let bestIdx = -1, bestDist = 0.3;
+          for (let i = 0; i < peaks.length; i++) {
+            const dist = Math.abs(peaks[i].shift - clickPpm);
+            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+          }
+          if (bestIdx >= 0) {
+            selectNmrPeak(bestIdx);
+          }
+        }
       }
     });
 
@@ -2455,9 +2726,9 @@
 
   // ── NMR Peak Table ──
   function buildNMRTable(peaks) {
-    return peaks.map(p => {
-      const jCell = p.jStr || '—';
-      return `<tr>
+    return peaks.map((p, idx) => {
+      const jCell = p.jStr || '\u2014';
+      return `<tr data-peak-idx="${idx}" data-atom-indices="${(p.atomIndices || []).join(',')}">
         <td>${p.shift.toFixed(2)}</td>
         <td>${p.hydrogenCount}</td>
         <td>${p.splitting}${p.isLabile ? ' *' : ''}</td>
@@ -2485,6 +2756,102 @@
     const isOpen = content.classList.contains('open');
     arrow.classList.toggle('open', !isOpen);
     content.classList.toggle('open', !isOpen);
+  }
+
+  // ── IR Band Table ──
+  function buildIRTable(bands) {
+    return bands.map(b => {
+      const freqStr = b.rangeMin === b.rangeMax
+        ? `${b.rangeMin}` : `${b.rangeMin}\u2013${b.rangeMax}`;
+      const intClass = b.intensity.includes('strong') ? 'ir-intensity-strong'
+        : b.intensity === 'medium' ? 'ir-intensity-medium'
+        : b.intensity === 'variable' ? 'ir-intensity-variable'
+        : 'ir-intensity-weak';
+      const intLabel = b.intensity.replace(',', ', ');
+      return `<tr>
+        <td>${freqStr}</td>
+        <td class="${intClass}">${intLabel}</td>
+        <td>${b.label}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Interactive H-NMR Assignment Structure ──
+  // Renders the base (unhighlighted) structure into the inline assignment panel
+  function renderAssignmentStructure() {
+    const container = document.getElementById('hnmr-assign-svg');
+    if (!container || !currentCanonical || !RDKit) return;
+
+    const mol = RDKit.get_mol(currentCanonical);
+    if (!mol || !mol.is_valid()) { if (mol) mol.delete(); return; }
+
+    try {
+      const svg = mol.get_svg_with_highlights(JSON.stringify({
+        width: 350, height: 250,
+        bondLineWidth: 1.5,
+        backgroundColour: [0, 0, 0, 0],
+      }));
+      container.innerHTML = fixSvgColors(svg);
+    } catch(e) {}
+
+    mol.delete();
+  }
+
+  // Highlights specific atoms on the inline assignment structure
+  function highlightAssignmentAtoms(atomIndices) {
+    const container = document.getElementById('hnmr-assign-svg');
+    if (!container || !currentCanonical || !RDKit) return;
+
+    const mol = RDKit.get_mol(currentCanonical);
+    if (!mol || !mol.is_valid()) { if (mol) mol.delete(); return; }
+
+    try {
+      const svg = mol.get_svg_with_highlights(JSON.stringify({
+        width: 350, height: 250,
+        bondLineWidth: 1.5,
+        backgroundColour: [0, 0, 0, 0],
+        atoms: atomIndices,
+        highlightColour: [0.29, 0.49, 1.0, 0.5],
+      }));
+      container.innerHTML = fixSvgColors(svg);
+
+      // Post-process: add pulse animation class to highlight ellipses
+      const svgEl = container.querySelector('svg');
+      if (svgEl) {
+        svgEl.querySelectorAll('ellipse').forEach(el => {
+          el.classList.add('atom-hl-glow');
+        });
+      }
+    } catch(e) {}
+
+    mol.delete();
+  }
+
+  function selectNmrPeak(idx) {
+    // Toggle: clicking the same row again deselects
+    if (idx === selectedNmrPeakIdx) {
+      renderAssignmentStructure(); // reset to base
+      document.querySelectorAll('.nmr-peak-table.interactive tbody tr.active')
+        .forEach(r => r.classList.remove('active'));
+      selectedNmrPeakIdx = -1;
+      return;
+    }
+
+    selectedNmrPeakIdx = idx;
+
+    // Update active row styling
+    document.querySelectorAll('.nmr-peak-table.interactive tbody tr.active')
+      .forEach(r => r.classList.remove('active'));
+    const activeRow = document.querySelector(`.nmr-peak-table.interactive tbody tr[data-peak-idx="${idx}"]`);
+    if (activeRow) activeRow.classList.add('active');
+
+    // Highlight atoms on the inline assignment structure
+    if (currentHNmrPeaks && currentHNmrPeaks[idx]) {
+      const atomIndices = currentHNmrPeaks[idx].atomIndices || [];
+      if (atomIndices.length > 0) {
+        highlightAssignmentAtoms(atomIndices);
+      }
+    }
   }
 
   // ── DOM refs ──
@@ -2550,6 +2917,9 @@
     }
 
     const canonical = mol.get_smiles();
+    currentCanonical = canonical;
+    currentHNmrPeaks = null;
+    selectedNmrPeakIdx = -1;
 
     // Get molecular weight from descriptors (get_mol_formula/get_mol_weight don't exist in MinimalLib)
     const descriptors = JSON.parse(mol.get_descriptors());
@@ -2605,22 +2975,23 @@
     addHistory(smiles, formula);
     localStorage.setItem('smiles-last', smiles);
 
-    // Defer NMR prediction so the UI renders immediately
+    // Defer NMR/IR prediction so the UI renders immediately
     const myNmrId = ++nmrConversionId;
     setTimeout(() => {
       if (myNmrId !== nmrConversionId) return; // stale
-      let hNmrData = null, cNmrData = null;
+      let hNmrData = null, cNmrData = null, irData = null;
       try {
         const mol2 = RDKit.get_mol(canonical);
         if (mol2 && mol2.is_valid()) {
           const mol2Json = mol2.get_json();
           hNmrData = predictHNMR(mol2Json, mol2, RDKit);
           cNmrData = predictCNMR(mol2Json, mol2, RDKit);
+          irData = predictIR(mol2, RDKit);
           mol2.delete();
         }
-      } catch(e) { /* NMR prediction failed */ }
+      } catch(e) { /* NMR/IR prediction failed */ }
       if (myNmrId !== nmrConversionId) return; // stale
-      showNMRResult(hNmrData, cNmrData);
+      showNMRResult(hNmrData, cNmrData, irData);
     }, 0);
   }
 
@@ -2761,17 +3132,21 @@
   }
 
   // ── Inject NMR results into the loading placeholder ──
-  function showNMRResult(hNmrData, cNmrData) {
+  function showNMRResult(hNmrData, cNmrData, irData) {
     const card = document.getElementById('nmr-card');
     if (!card) return;
 
     const hasH = hNmrData && hNmrData.peaks && hNmrData.peaks.length > 0;
     const hasC = cNmrData && cNmrData.peaks && cNmrData.peaks.length > 0;
+    const hasIR = irData && irData.bands && irData.bands.length > 0;
 
-    if (!hasH && !hasC) {
+    if (!hasH && !hasC && !hasIR) {
       card.remove();
       return;
     }
+
+    // Store H-NMR peaks globally for interactive highlighting
+    if (hasH) currentHNmrPeaks = hNmrData.peaks;
 
     const loading = document.getElementById('nmr-loading');
     if (loading) loading.remove();
@@ -2791,10 +3166,14 @@
             <div class="nmr-spectrum-container" style="margin-top:0.6rem">
               ${renderNMRSpectrumHTML(hNmrData.peaks, { prefix: 'hnmr', rangeMin: -1, rangeMax: 15, showIntegToggle: true })}
             </div>
-            <table class="mass-pct-table nmr-peak-table">
+            <table class="mass-pct-table nmr-peak-table interactive" id="hnmr-peak-table">
               <thead><tr><th>\u03b4 (ppm)</th><th>H</th><th>Multiplicity</th><th><i>J</i> (Hz)</th><th>Assignment</th></tr></thead>
               <tbody>${buildNMRTable(hNmrData.peaks)}</tbody>
             </table>
+            <div class="hnmr-assign-structure" id="hnmr-assign-container">
+              <span class="hnmr-assign-label">Assignment \u2014 click a row or peak to highlight</span>
+              <div id="hnmr-assign-svg"></div>
+            </div>
             <div class="nmr-disclaimer">Rule-based prediction (${SPEC_FREQ} MHz) \u2014 not a substitute for experimental data${hasLabile ? ' \u00b7 * Labile protons (OH, NH) appear as broad signals; position varies with solvent' : ''}</div>
           </div>
         </div>`;
@@ -2821,6 +3200,24 @@
         </div>`;
     }
 
+    // IR Absorption dropdown
+    if (hasIR) {
+      html += `
+        <div class="nmr-dropdown">
+          <div class="nmr-dropdown-header" onclick="toggleNMRDropdown(this)">
+            <span class="nmr-dropdown-arrow">\u25b6</span>
+            <span class="section-label" style="margin-bottom:0">IR Absorption Prediction</span>
+          </div>
+          <div class="nmr-dropdown-content">
+            <table class="mass-pct-table ir-band-table" style="margin-top:0.6rem">
+              <thead><tr><th>Wavenumber (cm\u207b\u00b9)</th><th>Intensity</th><th>Assignment</th></tr></thead>
+              <tbody>${buildIRTable(irData.bands)}</tbody>
+            </table>
+            <div class="nmr-disclaimer">Rule-based prediction \u2014 functional group analysis \u2014 not a substitute for experimental data</div>
+          </div>
+        </div>`;
+    }
+
     const content = document.createElement('div');
     content.innerHTML = html;
     while (content.firstChild) card.appendChild(content.firstChild);
@@ -2828,6 +3225,22 @@
     // Initialize interactive viewers after DOM insertion
     if (hasH) initNMRViewer(hNmrData.peaks, { prefix: 'hnmr', fullMin: -1, fullMax: 15, showInteg: true });
     if (hasC) initNMRViewer(cNmrData.peaks, { prefix: 'cnmr', fullMin: 0, fullMax: 250, showInteg: false });
+
+    // Wire up click handlers on H-NMR peak table rows + render assignment structure
+    if (hasH) {
+      // Render the base (unhighlighted) structure in the assignment panel
+      renderAssignmentStructure();
+
+      const table = document.getElementById('hnmr-peak-table');
+      if (table) {
+        table.querySelectorAll('tbody tr[data-peak-idx]').forEach(row => {
+          row.addEventListener('click', () => {
+            const idx = parseInt(row.dataset.peakIdx, 10);
+            selectNmrPeak(idx);
+          });
+        });
+      }
+    }
   }
 
   function showError(smiles) {
@@ -3145,6 +3558,12 @@
           mol.delete();
         }
       }
+    }
+    // Re-render inline assignment structure for theme
+    if (selectedNmrPeakIdx >= 0 && currentHNmrPeaks && currentHNmrPeaks[selectedNmrPeakIdx]) {
+      highlightAssignmentAtoms(currentHNmrPeaks[selectedNmrPeakIdx].atomIndices || []);
+    } else if (document.getElementById('hnmr-assign-svg')) {
+      renderAssignmentStructure();
     }
     // Update 3D viewer background on theme toggle
     if (viewer3d) {

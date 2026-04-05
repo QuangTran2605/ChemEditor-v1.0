@@ -1,0 +1,5 @@
+To-do-040326: 
+[] Separate the page's scroller from the editor's scroller, so whenever the mouse is in the editor, the scroller works inside the editor exclusively and vice versa. 
+[] Extend the editor card vertically downward, about 15% more. 
+[] Allow the editor's selection feature to interact with the smiles output card. Specifically, I'm thinking of a scenario where I have multiple structures drawn in the editor, and I want to select one of the structures and outputs its SMILES, without having to output the entire canvas. 
+[] Create an user guide at the end of the page as a dropdown feature, explaining every button being displayed on the toolbars on top and to the left of the canvas in 1 sentence. Update the Editor status to "Editor ready — draw a molecule or type SMILES. New to this? Check out the short guide below!".  

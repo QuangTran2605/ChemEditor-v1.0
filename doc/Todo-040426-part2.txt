@@ -1,0 +1,5 @@
+Todo-040426-part2:
+
+2. smiles_to_formula.html update: 
+[] Update the H-NMR spectrum assignment to assign the protons on the actual compound. What I'm thinking of is an interactive assignment with a 2D structure, allowing the user to click on specific assignment and the corresponding carbon holding that proton in the structure would glow up. 
+[] Add a new feature to provide predicted IR data of input structure. IR data should be in tabular format since actual IR spectra are often hard to be reproduced. 

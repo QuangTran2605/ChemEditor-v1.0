@@ -1,0 +1,9 @@
+Todo-040426-part1: 
+
+1. molecule_drawing.html update:
+[] Merge the "Convert" and "Get Selected" button to convert the entire canvas if nothing is selected, and convert selected structures if something in the canvas is selected. 
+[] Fix the bug when the selected structures don't get analyzed when the "Analyze in Formula Converter" is used. Essential the Analyze button should work the same way as the merged Convert button: analyze the whole canvas when nothing is selected, and only analyze selected structures when something is selected. 
+[] Update the Quick Guide with the actual icons in the toolbars, replacing the current text description like "Clear", "Open", "Save". Remove the "Left Toolbar - Atoms" section - that's on the right of the canvas! Also include a link at the end of the guide to the full Ketcher guide. Here's the link for you: https://github.com/epam/ketcher/blob/v3.2.0/documentation/help.md#ketcher-overview
+[] Input update: I need the input to allow conversion from all 7 output formats into structures, not just SMILES. Update the Analyze in Formula Converter to convert the input to SMILES first before taking it to the converter. At this point just change the button to Analyze instead :)
+[] Update the initial message "Draw or type SMILES" to draw or type SMILES/InChI/InChIKey/SMARTS, depending on the input type. For the other 3 input types, let's allow the user to either input the file's content as text or simply drag and drop the file into the input box. Maximum flexibility is what I'm shooting for here! And I want the input to be a singular box, don't make 2 boxes please. 
+[] Bring back the Full screen button, allowing users to full screen the canvas while hiding the all other cards temporarily. Set the default zoom to 80%, and 100% when full screened. 
